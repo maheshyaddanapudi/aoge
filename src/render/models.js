@@ -369,6 +369,8 @@ export const UNIT_FACTORY = {
 // BUILDINGS — footprint `size` tiles (TILE=2 world units per tile).
 // Groups are centered at footprint center, base at y=0.
 
+export function makeBanner(teamColor, h = 4) { return banner(teamColor, h); }
+
 function banner(teamColor, h = 4) {
   const g = new THREE.Group();
   const pole = cyl(0.05, 0.05, h, C.woodDark, 5);

@@ -2,8 +2,9 @@
 
 import * as THREE from 'three';
 import { TILE, BUILDINGS, UNITS, AGES, canAfford, payCost, refundCost } from '../config.js';
-import { BUILDING_FACTORY, makeScaffold } from '../render/models.js';
+import { BUILDING_FACTORY, makeScaffold, makeBanner } from '../render/models.js';
 import { makeSelectionRing, HealthBar } from '../render/effects.js';
+import { packBuilding } from '../render/pack.js';
 
 let NEXT_ID = 100000;
 
@@ -46,7 +47,8 @@ export class Building {
     const group = new THREE.Group();
     group.position.set(this.cx, this.groundY, this.cz);
     group.userData.entity = this;
-    this.modelGroup = BUILDING_FACTORY[type](game.teamColor(owner));
+    this.modelGroup = new THREE.Group();
+    this.modelGroup.add(this.buildModel());
     group.add(this.modelGroup);
     this.group = group;
     game.scene.add(group);
@@ -69,6 +71,29 @@ export class Building {
 
   pos3() {
     return new THREE.Vector3(this.cx, this.groundY, this.cz);
+  }
+
+  // Pack model for the owner's current age when available, else procedural.
+  buildModel() {
+    const teamColor = this.game.teamColor(this.owner);
+    const age = this.game.players[this.owner].age;
+    const pack = packBuilding(this.type, age, this.size);
+    if (pack) {
+      if (!this.def.isFarm && !this.def.isWall) {
+        const b = makeBanner(teamColor, 3 + this.size * 0.6);
+        b.position.set(this.size * TILE * 0.36, 0, this.size * TILE * 0.36);
+        pack.add(b);
+      }
+      return pack;
+    }
+    return BUILDING_FACTORY[this.type](teamColor);
+  }
+
+  // Swap visuals (age advance / pack finished loading) preserving progress.
+  reskin() {
+    if (this.dead) return;
+    while (this.modelGroup.children.length) this.modelGroup.remove(this.modelGroup.children[0]);
+    this.modelGroup.add(this.buildModel());
   }
 
   setSelected(sel) {

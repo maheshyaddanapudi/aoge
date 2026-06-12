@@ -13,6 +13,7 @@ import { InputController } from './controls/input.js';
 import { HUD } from './ui/hud.js';
 import { Minimap } from './ui/minimap.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
+import { loadPack, onPackReady } from './render/pack.js';
 import { startMusic, combatPulse } from './music.js';
 import { voice } from './voice.js';
 
@@ -68,6 +69,10 @@ game.recalcPop(ENEMY);
 
 const [aiGx, aiGy] = starts[1];
 game.ai = new AI(game, aiGx, aiGy);
+
+// Optional CC0 building pack: swap in models once loaded (no-op if absent).
+loadPack();
+onPackReady(() => { for (const b of game.buildings) b.reskin(); });
 
 // --- camera, input, UI ------------------------------------------------------------
 const rtsCam = new RTSCamera(camera, map);

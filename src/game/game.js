@@ -155,6 +155,10 @@ export class Game {
         u.hp = Math.min(u.maxHp, Math.round(u.hp * ratio));
       }
     }
+    // buildings visually evolve with their owner's age (model pack tiers)
+    for (const b of this.buildings) {
+      if (b.owner === owner && !b.dead) b.reskin();
+    }
     if (owner === PLAYER) {
       this.onAlert(`You have advanced to the ${AGES[newAge - 1].name}!`, true);
       this.sound('ageup');

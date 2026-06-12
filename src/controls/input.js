@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { TILE, PLAYER, BUILDINGS } from '../config.js';
 import { BUILDING_FACTORY } from '../render/models.js';
+import { packBuilding } from '../render/pack.js';
 import { voice } from '../voice.js';
 
 export class InputController {
@@ -293,7 +294,8 @@ export class InputController {
     this.cancelPlacement();
     const def = BUILDINGS[type];
     const ghostMat = new THREE.MeshLambertMaterial({ color: 0x4dff5e, transparent: true, opacity: 0.55, depthWrite: false });
-    const ghost = BUILDING_FACTORY[type](this.game.teamColor(PLAYER));
+    const ghost = packBuilding(type, this.game.players[PLAYER].age, def.size)
+      || BUILDING_FACTORY[type](this.game.teamColor(PLAYER));
     ghost.traverse(o => { if (o.isMesh) { o.material = ghostMat; o.castShadow = false; } });
     this.game.scene.add(ghost);
     this.placing = { type, def, ghost, ghostMat, valid: false, gx: 0, gy: 0 };
