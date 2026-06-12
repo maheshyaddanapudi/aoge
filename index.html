@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Age of Empires JS — Browser RTS</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>&#9876;</text></svg>" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e14; }
+    body { font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; user-select: none; -webkit-user-select: none; }
+    #game-canvas { display: block; width: 100%; height: 100%; cursor: default; }
+
+    /* ---------- Top resource bar ---------- */
+    #topbar {
+      position: fixed; top: 0; left: 0; right: 0; height: 40px;
+      display: flex; align-items: center; gap: 4px; padding: 0 10px;
+      background: linear-gradient(#3a2c1a, #241a0e);
+      border-bottom: 2px solid #6b5128; color: #f0e6d2;
+      font-size: 15px; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,.5);
+    }
+    .res { display: flex; align-items: center; gap: 6px; padding: 3px 12px 3px 6px;
+      background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px; min-width: 96px; }
+    .res .ico { font-size: 17px; }
+    .res .val { font-weight: bold; font-variant-numeric: tabular-nums; }
+    #age-disp { margin-left: auto; font-weight: bold; color: #ffd970; letter-spacing: .5px;
+      padding: 3px 14px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px; }
+    #mute-btn { margin-left: 8px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px;
+      color: #f0e6d2; font-size: 15px; padding: 3px 10px; cursor: pointer; }
+    #mute-btn:hover { background: rgba(255,255,255,.1); }
+
+    /* ---------- Alerts ---------- */
+    #alerts { position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
+      z-index: 11; pointer-events: none; text-align: center; }
+    .alert { color: #ff6b5e; font-weight: bold; font-size: 17px; text-shadow: 0 1px 3px #000;
+      margin-top: 4px; animation: fadeout 4s forwards; }
+    .alert.good { color: #8fe080; }
+    @keyframes fadeout { 0%,70% { opacity: 1; } 100% { opacity: 0; } }
+
+    /* ---------- Bottom HUD ---------- */
+    #bottombar {
+      position: fixed; left: 0; right: 0; bottom: 0; height: 178px;
+      display: flex; align-items: stretch; gap: 8px; padding: 8px;
+      pointer-events: none; z-index: 10;
+    }
+    .hud-panel {
+      background: linear-gradient(#34281777, #1d140add);
+      border: 2px solid #6b5128; border-radius: 6px;
+      pointer-events: auto; box-shadow: 0 2px 10px rgba(0,0,0,.55);
+      backdrop-filter: blur(2px);
+    }
+    #minimap-wrap { width: 168px; padding: 5px; position: relative; display: flex; align-items: center; justify-content: center; }
+    #minimap { width: 154px; height: 154px; image-rendering: auto; cursor: crosshair; border: 1px solid #00000088; }
+
+    #sel-panel { flex: 1; padding: 8px 12px; color: #f0e6d2; overflow: hidden; display: flex; flex-direction: column; }
+    #sel-title { font-weight: bold; font-size: 16px; color: #ffd970; margin-bottom: 2px; }
+    #sel-sub { font-size: 12.5px; color: #cbbfa5; margin-bottom: 6px; min-height: 16px; }
+    #sel-cards { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; align-content: flex-start; }
+    .sel-card { width: 40px; height: 40px; border: 1px solid #6b5128; border-radius: 4px;
+      background: rgba(0,0,0,.4); display: flex; flex-direction: column; align-items: center;
+      justify-content: center; font-size: 17px; cursor: pointer; position: relative; }
+    .sel-card:hover { border-color: #ffd970; }
+    .sel-card .hpbar { position: absolute; bottom: 2px; left: 3px; right: 3px; height: 3px; background: #511; }
+    .sel-card .hpbar > div { height: 100%; background: #3fbf3f; }
+    #queue-row { display: flex; gap: 4px; margin-top: 6px; align-items: center; }
+    .q-item { width: 34px; height: 34px; border: 1px solid #6b5128; border-radius: 4px; background: rgba(0,0,0,.4);
+      display: flex; align-items: center; justify-content: center; font-size: 15px; position: relative; overflow: hidden; cursor: pointer; }
+    .q-item .prog { position: absolute; left: 0; bottom: 0; top: 0; background: rgba(120,200,90,.3); }
+
+    #cmd-panel { width: 252px; padding: 8px; display: grid; grid-template-columns: repeat(4, 1fr);
+      grid-auto-rows: 50px; gap: 6px; align-content: start; }
+    .cmd-btn { border: 1px solid #6b5128; border-radius: 5px; background: linear-gradient(#4a3a20, #2c2010);
+      color: #f0e6d2; cursor: pointer; font-size: 19px; position: relative;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 2px; }
+    .cmd-btn:hover:not(.disabled) { border-color: #ffd970; background: linear-gradient(#5d4a28, #3a2b15); }
+    .cmd-btn.disabled { opacity: .42; cursor: not-allowed; }
+    .cmd-btn .lbl { font-size: 9px; line-height: 1; margin-top: 2px; color: #d8cba8; }
+    .cmd-btn .cost { font-size: 8.5px; line-height: 1.1; color: #b8a87e; }
+    .cmd-btn:hover .tooltip { display: block; }
+    .tooltip { display: none; position: absolute; bottom: 105%; left: 50%; transform: translateX(-50%);
+      background: #1d140af2; border: 1px solid #6b5128; color: #f0e6d2; font-size: 12px; line-height: 1.35;
+      padding: 6px 9px; border-radius: 4px; white-space: nowrap; z-index: 30; pointer-events: none; text-align: left; }
+
+    /* ---------- Overlays ---------- */
+    .overlay { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center;
+      background: rgba(8, 6, 2, .72); }
+    .overlay-box { background: linear-gradient(#3a2c1a, #241a0e); border: 3px solid #8a6a30; border-radius: 10px;
+      padding: 30px 44px; color: #f0e6d2; text-align: center; max-width: 640px; box-shadow: 0 8px 40px #000; }
+    .overlay-box h1 { color: #ffd970; margin-bottom: 14px; font-size: 30px; letter-spacing: 1px; }
+    .overlay-box p { margin: 6px 0; font-size: 15px; line-height: 1.5; }
+    .overlay-box .keys { text-align: left; display: inline-block; margin: 10px 0; font-size: 14px; line-height: 1.7; }
+    .overlay-box kbd { background: #1a120a; border: 1px solid #6b5128; padding: 1px 7px; border-radius: 4px; font-size: 12.5px; }
+    .big-btn { margin-top: 18px; font-size: 18px; font-weight: bold; padding: 10px 36px; cursor: pointer;
+      background: linear-gradient(#7a5c28, #553e16); color: #ffe9b0; border: 2px solid #b08c40; border-radius: 6px; }
+    .big-btn:hover { background: linear-gradient(#94703330, #6b4f1d), linear-gradient(#8a6a30, #634918); }
+    #gameover-overlay h1.victory { color: #8fe080; }
+    #gameover-overlay h1.defeat { color: #ff6b5e; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="topbar">
+    <div class="res"><span class="ico">&#129717;</span><span class="val" id="res-wood">0</span></div>
+    <div class="res"><span class="ico">&#127830;</span><span class="val" id="res-food">0</span></div>
+    <div class="res"><span class="ico">&#129689;</span><span class="val" id="res-gold">0</span></div>
+    <div class="res"><span class="ico">&#128100;</span><span class="val" id="res-pop">0/0</span></div>
+    <div id="age-disp">Dark Age</div>
+    <button id="mute-btn" title="Toggle sound">&#128266;</button>
+  </div>
+
+  <div id="alerts"></div>
+
+  <div id="bottombar">
+    <div class="hud-panel" id="minimap-wrap"><canvas id="minimap" width="308" height="308"></canvas></div>
+    <div class="hud-panel" id="sel-panel">
+      <div id="sel-title">No selection</div>
+      <div id="sel-sub"></div>
+      <div id="sel-cards"></div>
+      <div id="queue-row"></div>
+    </div>
+    <div class="hud-panel" id="cmd-panel"></div>
+  </div>
+
+  <div class="overlay" id="start-overlay">
+    <div class="overlay-box">
+      <h1>&#9876; Age of Empires JS</h1>
+      <p>Build your economy, advance through <b>four Ages</b>, raise an army and <b>destroy the red enemy's base</b> before they destroy yours.</p>
+      <div class="keys">
+        <b>Controls</b><br/>
+        <kbd>Left click</kbd> select &nbsp;&middot;&nbsp; <kbd>drag</kbd> box-select &nbsp;&middot;&nbsp; <kbd>Right click</kbd> move / gather / attack / build<br/>
+        <kbd>W A S D</kbd> / <kbd>arrows</kbd> / screen edge &mdash; pan camera &nbsp;&middot;&nbsp; <kbd>wheel</kbd> zoom<br/>
+        <kbd>Ctrl</kbd>+<kbd>1-9</kbd> set control group &nbsp;&middot;&nbsp; <kbd>1-9</kbd> recall &nbsp;&middot;&nbsp; <kbd>Esc</kbd> cancel placement<br/>
+        <kbd>H</kbd> jump to Town Center &nbsp;&middot;&nbsp; <kbd>.</kbd> next idle villager
+      </div>
+      <p style="color:#cbbfa5;font-size:13.5px">Villagers gather &#129717; wood, &#127830; food and &#129689; gold and construct buildings.<br/>Houses raise your population cap. Each Age unlocks stronger units and buildings.</p>
+      <button class="big-btn" id="start-btn">Start Game</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="gameover-overlay">
+    <div class="overlay-box">
+      <h1 id="gameover-title">Victory!</h1>
+      <p id="gameover-sub"></p>
+      <button class="big-btn" onclick="location.reload()">Play Again</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
