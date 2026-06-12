@@ -79,12 +79,15 @@ export class Building {
     const age = this.game.players[this.owner].age;
     const pack = packBuilding(this.type, age, this.size);
     if (pack) {
+      // banner sits beside the (internally rescaled) pack model, unscaled
+      const wrap = new THREE.Group();
+      wrap.add(pack);
       if (!this.def.isFarm && !this.def.isWall) {
         const b = makeBanner(teamColor, 3 + this.size * 0.6);
         b.position.set(this.size * TILE * 0.36, 0, this.size * TILE * 0.36);
-        pack.add(b);
+        wrap.add(b);
       }
-      return pack;
+      return wrap;
     }
     return BUILDING_FACTORY[this.type](teamColor);
   }

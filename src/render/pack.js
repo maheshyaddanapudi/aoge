@@ -12,8 +12,8 @@ import { TILE } from '../config.js';
 // our building type -> pack model basename per age (1-4). null = no mapping.
 // Level suffix picks the most built-out variant of each tier.
 const MANIFEST = {
-  towncenter: ['TownCenter_FirstAge_Level1', 'TownCenter_FirstAge_Level3', 'TownCenter_SecondAge_Level2', 'TownCenter_SecondAge_Level3'],
-  house: ['Houses_FirstAge_1_Level1', 'Houses_FirstAge_2_Level2', 'Houses_SecondAge_1_Level2', 'Houses_SecondAge_3_Level3'],
+  towncenter: ['TownCenter_FirstAge_Level3', 'TownCenter_SecondAge_Level1', 'TownCenter_SecondAge_Level2', 'TownCenter_SecondAge_Level3'],
+  house: ['Houses_FirstAge_1_Level2', 'Houses_FirstAge_2_Level2', 'Houses_SecondAge_1_Level2', 'Houses_SecondAge_3_Level3'],
   barracks: ['Barracks_FirstAge_Level2', 'Barracks_FirstAge_Level3', 'Barracks_SecondAge_Level2', 'Barracks_SecondAge_Level3'],
   archeryrange: ['Archery_FirstAge_Level2', 'Archery_FirstAge_Level3', 'Archery_SecondAge_Level2', 'Archery_SecondAge_Level3'],
   farm: ['Farm_FirstAge_Level2_Wheat', 'Farm_FirstAge_Level3_Wheat', 'Farm_SecondAge_Level2_Wheat', 'Farm_SecondAge_Level3_Wheat'],
@@ -21,7 +21,9 @@ const MANIFEST = {
   storehouse: ['Market_FirstAge_Level2', 'Market_FirstAge_Level3', 'Market_SecondAge_Level2', 'Market_SecondAge_Level3'],
   stable: ['Windmill_FirstAge', 'Windmill_FirstAge', 'Windmill_SecondAge', 'Windmill_SecondAge'],
   siegeworkshop: ['TowerHouse_FirstAge', 'TowerHouse_FirstAge', 'TowerHouse_SecondAge', 'TowerHouse_SecondAge'],
-  wall: ['Walls_FirstAge', 'Walls_FirstAge', 'Walls_SecondAge', 'Walls_SecondAge'],
+  wall: ['Wall_FirstAge', 'Wall_FirstAge', 'Wall_SecondAge', 'Wall_SecondAge'],
+  // wheat overlays compose with this dirt plot (not placed directly)
+  _farmdirt: ['Farm_Dirt_Level2'],
 };
 
 const registry = new Map(); // "name" -> normalized prototype Group
@@ -96,6 +98,24 @@ export function packBuilding(type, age, footprintTiles) {
   const names = MANIFEST[type];
   if (!names) return null;
   const name = names[Math.min(3, Math.max(0, age - 1))];
+  const main = scaledClone(name, footprintTiles);
+  if (!main) return null;
+  if (type === 'farm') {
+    // farms are a dirt plot with the wheat model layered on top
+    const dirt = scaledClone('Farm_Dirt_Level2', footprintTiles);
+    if (dirt) {
+      const g = new THREE.Group();
+      // lift the plot above terrain undulation so it doesn't z-bury
+      dirt.position.y = 0.16;
+      main.position.y = 0.22;
+      g.add(dirt, main);
+      return g;
+    }
+  }
+  return main;
+}
+
+function scaledClone(name, footprintTiles) {
   const proto = registry.get(name);
   if (!proto) return null;
   const inst = proto.clone(true);

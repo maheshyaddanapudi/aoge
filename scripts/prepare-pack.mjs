@@ -8,8 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const NEEDED = [
-  'TownCenter_FirstAge_Level1', 'TownCenter_FirstAge_Level3', 'TownCenter_SecondAge_Level2', 'TownCenter_SecondAge_Level3',
-  'Houses_FirstAge_1_Level1', 'Houses_FirstAge_2_Level2', 'Houses_SecondAge_1_Level2', 'Houses_SecondAge_3_Level3',
+  'TownCenter_FirstAge_Level3', 'TownCenter_SecondAge_Level1', 'TownCenter_SecondAge_Level2', 'TownCenter_SecondAge_Level3',
+  'Houses_FirstAge_1_Level2', 'Houses_FirstAge_2_Level2', 'Houses_SecondAge_1_Level2', 'Houses_SecondAge_3_Level3',
   'Barracks_FirstAge_Level2', 'Barracks_FirstAge_Level3', 'Barracks_SecondAge_Level2', 'Barracks_SecondAge_Level3',
   'Archery_FirstAge_Level2', 'Archery_FirstAge_Level3', 'Archery_SecondAge_Level2', 'Archery_SecondAge_Level3',
   'Farm_FirstAge_Level2_Wheat', 'Farm_FirstAge_Level3_Wheat', 'Farm_SecondAge_Level2_Wheat', 'Farm_SecondAge_Level3_Wheat',
@@ -17,7 +17,8 @@ const NEEDED = [
   'Market_FirstAge_Level2', 'Market_FirstAge_Level3', 'Market_SecondAge_Level2', 'Market_SecondAge_Level3',
   'Windmill_FirstAge', 'Windmill_SecondAge',
   'TowerHouse_FirstAge', 'TowerHouse_SecondAge',
-  'Walls_FirstAge', 'Walls_SecondAge',
+  'Wall_FirstAge', 'Wall_SecondAge',
+  'Farm_Dirt_Level2',
 ];
 
 const src = process.argv[2];
