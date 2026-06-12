@@ -21,6 +21,13 @@ export function toggleMute() {
   return muted;
 }
 
+export function isMuted() { return muted; }
+
+// Shared audio graph access for the music and voice modules.
+export function audioBus() {
+  return ctx ? { ctx, master } : null;
+}
+
 function env(gainNode, t0, attack, decay, peak = 1) {
   gainNode.gain.setValueAtTime(0, t0);
   gainNode.gain.linearRampToValueAtTime(peak, t0 + attack);
@@ -76,6 +83,10 @@ const SOUNDS = {
   ageup: () => [262, 330, 392, 523].forEach((f, i) => setTimeout(() => tone(f, 0.3, 'triangle', 0.32), i * 130)),
   built: () => { tone(392, 0.1, 'triangle', 0.3); setTimeout(() => tone(523, 0.15, 'triangle', 0.3), 90); },
   ready: () => tone(523, 0.09, 'sine', 0.25),
+  victory: () => [262, 330, 392, 523, 659, 784].forEach((f, i) =>
+    setTimeout(() => tone(f, i < 5 ? 0.28 : 0.9, 'triangle', 0.34), i * 150)),
+  defeat: () => [392, 370, 311, 262, 196].forEach((f, i) =>
+    setTimeout(() => tone(f, i < 4 ? 0.42 : 1.2, 'sawtooth', 0.2), i * 320)),
 };
 
 export function playSound(name) {

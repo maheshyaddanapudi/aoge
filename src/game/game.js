@@ -43,6 +43,7 @@ export class Game {
     this.onAlert = () => {};
     this.soundFn = () => {};
     this.onGameOver = () => {};
+    this.onCombat = () => {};
     this.lastAttackAlert = -99;
   }
 
@@ -167,6 +168,7 @@ export class Game {
   applyDamage(target, dmg, attacker) {
     if (!target || target.dead || this.gameOver) return;
     target.hp -= dmg;
+    if (target.owner === PLAYER || attacker?.owner === PLAYER) this.onCombat();
 
     // alert + retaliation
     if (target.owner === PLAYER && this.time - this.lastAttackAlert > 14) {

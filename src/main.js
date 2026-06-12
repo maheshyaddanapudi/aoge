@@ -13,6 +13,8 @@ import { InputController } from './controls/input.js';
 import { HUD } from './ui/hud.js';
 import { Minimap } from './ui/minimap.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
+import { startMusic, combatPulse } from './music.js';
+import { voice } from './voice.js';
 
 const canvas = document.getElementById('game-canvas');
 const { renderer, scene, camera, updateSun } = createScene(canvas);
@@ -27,6 +29,7 @@ const trees = new TreeRenderer(scene);
 const game = new Game(scene, map, trees);
 game.effects = new Effects(scene, game);
 game.soundFn = playSound;
+game.onCombat = combatPulse;
 game.createResourceNodes(resourceDescriptors);
 
 // --- starting bases ------------------------------------------------------------
@@ -103,6 +106,7 @@ frame();
 
 document.getElementById('start-btn').addEventListener('click', () => {
   initAudio();
+  startMusic();
   document.getElementById('start-overlay').classList.add('hidden');
   running = true;
   clock.getDelta();
@@ -112,3 +116,4 @@ document.getElementById('start-btn').addEventListener('click', () => {
 // Expose for debugging in the console.
 window.__game = game;
 window.__rtsCam = rtsCam;
+window.__audio = { voice, combatPulse };

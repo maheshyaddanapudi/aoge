@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { TILE, PLAYER, BUILDINGS } from '../config.js';
 import { BUILDING_FACTORY } from '../render/models.js';
+import { voice } from '../voice.js';
 
 export class InputController {
   constructor({ canvas, game, rtsCam, camera, terrainMesh, onSelectionChange, sound }) {
@@ -168,7 +169,7 @@ export class InputController {
     const hit = this.pick(e.clientX, e.clientY);
     if (hit?.entity) {
       this.select([hit.entity], start.shift);
-      this.sound('select');
+      this.selectFeedback([hit.entity]);
     } else if (!start.shift) {
       this.select([]);
     }
@@ -190,10 +191,23 @@ export class InputController {
       // military preferred over villagers in mixed boxes
       const mil = found.filter(u => u.type !== 'villager');
       this.select(mil.length ? mil : found, additive);
-      this.sound('select');
+      this.selectFeedback(this.selection);
     } else if (!additive) {
       this.select([]);
     }
+  }
+
+  selectFeedback(sel) {
+    const own = sel.filter(e => e.owner === PLAYER);
+    if (own.some(e => e.isUnit && e.type !== 'villager')) voice('mSelect');
+    else if (own.some(e => e.isUnit)) voice('vSelect');
+    else this.sound('select');
+  }
+
+  ackFeedback(units) {
+    if (units.some(u => u.type !== 'villager')) voice('mAck');
+    else if (units.length) voice('vAck');
+    else this.sound('command');
   }
 
   // ---- commands ----------------------------------------------------------------------
@@ -223,14 +237,14 @@ export class InputController {
       const t = hit.entity;
       if (t.owner !== PLAYER) {
         for (const u of units) u.orderAttack(t);
-        this.sound('command');
+        this.ackFeedback(units);
       } else if (t.isBuilding && !t.complete) {
         for (const u of units) if (u.type === 'villager') u.orderBuild(t);
-        this.sound('command');
+        this.ackFeedback(units.filter(u => u.type === 'villager'));
       } else if (t.isBuilding && t.def.isFarm) {
         const vills = units.filter(u => u.type === 'villager');
         if (vills.length) vills[0].orderGatherFarm(t);
-        this.sound('command');
+        this.ackFeedback(vills);
       } else if (t.isBuilding && t.def.dropoff) {
         for (const u of units) {
           if (u.type === 'villager' && u.carry?.amt > 0) {
@@ -238,10 +252,10 @@ export class InputController {
             u.goDeposit();
           } else u.orderMove(t.cx, t.cz);
         }
-        this.sound('command');
+        this.ackFeedback(units);
       } else {
         for (const u of units) u.orderMove(t.isBuilding ? t.cx : t.x, t.isBuilding ? t.cz : t.z);
-        this.sound('command');
+        this.ackFeedback(units);
       }
       return;
     }
@@ -251,13 +265,13 @@ export class InputController {
       const rest = units.filter(u => u.type !== 'villager');
       for (const v of vills) v.orderGather(hit.node);
       for (const u of rest) u.orderMove(hit.node.wx, hit.node.wz);
-      this.sound('command');
+      this.ackFeedback(units);
       return;
     }
 
     if (hit.point) {
       this.moveFormation(units, hit.point.x, hit.point.z);
-      this.sound('command');
+      this.ackFeedback(units);
     }
   }
 

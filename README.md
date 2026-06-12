@@ -16,6 +16,10 @@ procedurally modeled low-poly geometry with real-time shadows.
 - A scripted enemy AI builds its own base on the same map, advances through the
   ages, and attacks in escalating waves.
 - **Win** by destroying every enemy building. **Lose** if yours are razed first.
+- Fully synthesized audio: generative medieval background music (Karplus-Strong
+  plucked strings, flute, drone) that layers in war drums during combat, plus
+  AoE-style gibberish voice lines when you select and command units — no audio
+  files anywhere.
 
 ## Controls
 

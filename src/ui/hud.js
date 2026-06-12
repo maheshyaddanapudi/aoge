@@ -1,6 +1,8 @@
 // DOM HUD: resource bar, alerts, selection panel, command card, game over.
 
 import { PLAYER, AGES, UNITS, BUILDINGS, BUILD_MENU, canAfford } from '../config.js';
+import { playSound } from '../audio.js';
+import { stopMusic } from '../music.js';
 
 const RES_ICONS = { wood: '\u{1FAB5}', food: '\u{1F356}', gold: '\u{1FA99}' };
 
@@ -51,6 +53,8 @@ export class HUD {
   }
 
   showGameOver(won) {
+    stopMusic();
+    playSound(won ? 'victory' : 'defeat');
     this.el.gameover.classList.remove('hidden');
     this.el.gameoverTitle.textContent = won ? 'Victory!' : 'Defeat';
     this.el.gameoverTitle.className = won ? 'victory' : 'defeat';
