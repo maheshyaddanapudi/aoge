@@ -14,6 +14,7 @@ import { HUD } from './ui/hud.js';
 import { Minimap } from './ui/minimap.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
 import { loadPack, onPackReady } from './render/pack.js';
+import { loadUnitPack } from './render/unitPack.js';
 import { startMusic, combatPulse } from './music.js';
 import { voice } from './voice.js';
 
@@ -73,6 +74,9 @@ game.ai = new AI(game, aiGx, aiGy);
 // Optional CC0 building pack: swap in models once loaded (no-op if absent).
 loadPack();
 onPackReady(() => { for (const b of game.buildings) b.reskin(); });
+loadUnitPack().then((ok) => {
+  if (ok) for (const u of game.units) u.adoptModel();
+});
 
 // --- camera, input, UI ------------------------------------------------------------
 const rtsCam = new RTSCamera(camera, map);

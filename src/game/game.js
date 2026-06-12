@@ -223,7 +223,12 @@ export class Game {
     this.players[u.owner].popUsed -= 1;
     this.units.splice(this.units.indexOf(u), 1);
     this.effects.blood(u.pos3().setY(u.group.position.y + 0.8));
-    this.effects.fadeOut(u.group, 1.4, 1.0);
+    if (u.mixer && u.actions?.death) {
+      u.playAction('death', 0.1);
+      this.effects.fadeOut(u.group, 2.2, 0.6, u.mixer);
+    } else {
+      this.effects.fadeOut(u.group, 1.4, 1.0);
+    }
     this.sound('die');
     this.checkWinLose();
   }

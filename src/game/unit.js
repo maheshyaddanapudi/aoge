@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { TILE, UNITS, CARRY_CAPACITY, AGE_HP_MULT, AGE_ATK_MULT } from '../config.js';
 import { findPath } from '../world/pathfinding.js';
 import { UNIT_FACTORY } from '../render/models.js';
+import { packUnit } from '../render/unitPack.js';
 import { makeSelectionRing, HealthBar } from '../render/effects.js';
 
 let NEXT_ID = 1;
@@ -40,11 +41,15 @@ export class Unit {
     this.animT = Math.random() * 10;
     this.moving = false;
 
-    const group = UNIT_FACTORY[type](game.teamColor(owner));
+    const group = new THREE.Group();
     group.position.set(x, game.map.heightAt(x, z), z);
     group.userData.entity = this;
     this.group = group;
-    this.limbs = group.userData.limbs || {};
+    this.mixer = null;
+    this.actions = null;
+    this.actionName = null;
+    this.limbs = {};
+    this.adoptModel();
     game.scene.add(group);
 
     this.selRing = makeSelectionRing(this.radius + 0.55, owner === 0);
@@ -60,6 +65,37 @@ export class Unit {
 
   pos3() {
     return new THREE.Vector3(this.x, this.group.position.y, this.z);
+  }
+
+  // Use an animated pack character when available, procedural model otherwise.
+  // Called again from main once the pack finishes loading (late adoption).
+  adoptModel() {
+    const pack = packUnit(this.type, this.game.teamColor(this.owner));
+    if (pack && this.procModel) {
+      this.group.remove(this.procModel);
+      this.procModel = null;
+    } else if (this.procModel || (this.mixer && !pack)) {
+      return; // already adopted
+    }
+    if (pack) {
+      this.group.add(pack.model);
+      this.mixer = pack.mixer;
+      this.actions = pack.actions;
+      this.actionName = null;
+      this.limbs = {};
+    } else if (!this.procModel) {
+      this.procModel = UNIT_FACTORY[this.type](this.game.teamColor(this.owner));
+      this.group.add(this.procModel);
+      this.limbs = this.procModel.userData.limbs || {};
+    }
+  }
+
+  playAction(name, fade = 0.16) {
+    if (this.actionName === name || !this.actions?.[name]) return;
+    const prev = this.actions[this.actionName];
+    if (prev) prev.fadeOut(fade);
+    this.actions[name].reset().fadeIn(fade).play();
+    this.actionName = name;
   }
 
   setSelected(sel) {
@@ -559,12 +595,26 @@ export class Unit {
     g.position.y = this.game.map.heightAt(this.x, this.z);
     g.rotation.y = this.facing;
 
-    const L = this.limbs;
-    const t = this.animT;
     if (this.attackAnimT > 0) this.attackAnimT -= dt;
     if (this.throwAnimT > 0) this.throwAnimT -= dt;
 
-    if (g.userData.isMounted) {
+    if (this.mixer) {
+      // skeletal pack character: pick a clip from the state machine
+      let want = 'idle';
+      if (this.moving) want = 'walk';
+      else if (this.state === 'gathering' || this.state === 'building') want = 'work';
+      else if (this.state === 'fighting') want = this.def.projectile ? 'shoot' : 'work';
+      this.playAction(want);
+      this.mixer.update(dt);
+      this.healthBar.set(this.hp / this.maxHp, this.selected || this.hp < this.maxHp);
+      return;
+    }
+
+    const ud = this.procModel?.userData || {};
+    const L = this.limbs;
+    const t = this.animT;
+
+    if (ud.isMounted) {
       // horse gallop
       const sp = this.moving ? 13 : 0;
       for (let i = 0; i < 4; i++) {
@@ -573,7 +623,7 @@ export class Unit {
       }
       if (L.rArm) L.rArm.rotation.x = this.attackAnimT > 0 ? -0.7 : 0;
       g.position.y += this.moving ? Math.abs(Math.sin(t * sp * 0.5)) * 0.12 : 0;
-    } else if (g.userData.isMachine) {
+    } else if (ud.isMachine) {
       if (L.throwArm) {
         const target = this.throwAnimT > 0 ? -2.0 : -0.5;
         L.throwArm.rotation.x += (target - L.throwArm.rotation.x) * Math.min(1, dt * (this.throwAnimT > 0 ? 18 : 3));

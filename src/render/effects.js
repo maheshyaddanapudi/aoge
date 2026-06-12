@@ -139,8 +139,9 @@ export class Effects {
   blood(pos) { this.puff(pos, 0x8a1f12, 4, 3); }
 
   // Sink-and-remove animation for dead units / razed buildings.
-  fadeOut(object3d, dur = 1.6, sink = 1.2) {
-    this.fades.push({ obj: object3d, t: 0, dur, sink, y0: object3d.position.y });
+  // Pass a mixer to keep a death animation playing during the fade.
+  fadeOut(object3d, dur = 1.6, sink = 1.2, mixer = null) {
+    this.fades.push({ obj: object3d, t: 0, dur, sink, y0: object3d.position.y, mixer });
   }
 
   update(dt) {
@@ -217,6 +218,7 @@ export class Effects {
     for (let i = this.fades.length - 1; i >= 0; i--) {
       const f = this.fades[i];
       f.t += dt;
+      if (f.mixer) f.mixer.update(dt);
       const k = f.t / f.dur;
       if (k >= 1) {
         this.scene.remove(f.obj);
