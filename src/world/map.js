@@ -55,7 +55,7 @@ export class GameMap {
     let h = (this.noise(nx, ny) - 0.5) * 2.6 + (this.noise2(nx * 2.7, ny * 2.7) - 0.5) * 1.1;
     // Carve a couple of ponds where low-frequency noise dips hard.
     const pond = this.noise2(wx / 60 + 11, wz / 60 + 7);
-    if (pond < 0.18) h -= (0.18 - pond) * 14;
+    if (pond < 0.15) h -= (0.15 - pond) * 12;
     // Raise edges slightly so the playfield reads as a contained valley.
     const cx = wx - (this.size * TILE) / 2, cz = wz - (this.size * TILE) / 2;
     const edge = Math.max(Math.abs(cx), Math.abs(cz)) / ((this.size * TILE) / 2);
