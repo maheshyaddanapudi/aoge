@@ -3,6 +3,7 @@
 
 import * as THREE from 'three';
 import { mat } from './models.js';
+import { smokeSprite } from './textures.js';
 
 const ringGeo = new THREE.RingGeometry(0.75, 0.95, 24);
 ringGeo.rotateX(-Math.PI / 2);
@@ -57,6 +58,52 @@ export class Effects {
     this.projectiles = [];
     this.particles = [];
     this.fades = [];
+    this.smokes = [];
+    this.smokeTex = smokeSprite();
+  }
+
+  spawnSmoke(x, y, z, dark = false, scale = 1) {
+    const m = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this.smokeTex,
+      color: dark ? 0x2e2a26 : 0xd8d8d8,
+      transparent: true,
+      opacity: dark ? 0.5 : 0.32,
+      depthWrite: false,
+    }));
+    m.position.set(x + (Math.random() - 0.5) * 0.4, y, z + (Math.random() - 0.5) * 0.4);
+    m.scale.setScalar(0.6 * scale);
+    this.scene.add(m);
+    this.smokes.push({
+      m, t: 0, life: 2 + Math.random() * 1.2,
+      rise: 1 + Math.random() * 0.6,
+      drift: (Math.random() - 0.5) * 0.5,
+      grow: (1.1 + Math.random() * 0.7) * scale,
+      o0: m.material.opacity,
+    });
+  }
+
+  // Ambient building smoke: cozy chimneys + black smoke from damaged buildings.
+  updateBuildingSmoke(dt) {
+    for (const b of this.game.buildings) {
+      if (b.dead || !b.complete) continue;
+      b.smokeT = (b.smokeT ?? Math.random()) - dt;
+      if (b.smokeT > 0) continue;
+      const hurt = b.hp < b.maxHp * 0.55;
+      if (hurt) {
+        b.smokeT = b.hp < b.maxHp * 0.3 ? 0.22 : 0.45;
+        const half = b.size; // size*TILE/2 = size when TILE=2
+        this.spawnSmoke(b.cx + (Math.random() - 0.5) * half, b.groundY + b.size + 0.5,
+          b.cz + (Math.random() - 0.5) * half, true, 1.4);
+      } else if (b.type === 'house') {
+        b.smokeT = 0.8 + Math.random() * 0.5;
+        this.spawnSmoke(b.cx - 1.1, b.groundY + 3.2, b.cz, false, 0.8);
+      } else if (b.type === 'towncenter') {
+        b.smokeT = 1.1 + Math.random() * 0.6;
+        this.spawnSmoke(b.cx + b.size - 0.5, b.groundY + 2.2, b.cz + b.size - 0.5, false, 0.9);
+      } else {
+        b.smokeT = 2;
+      }
+    }
   }
 
   // Homing arrow.
@@ -98,6 +145,23 @@ export class Effects {
 
   update(dt) {
     const game = this.game;
+    this.updateBuildingSmoke(dt);
+    // smoke sprites
+    for (let i = this.smokes.length - 1; i >= 0; i--) {
+      const s = this.smokes[i];
+      s.t += dt;
+      if (s.t >= s.life) {
+        this.scene.remove(s.m);
+        s.m.material.dispose();
+        this.smokes.splice(i, 1);
+        continue;
+      }
+      const k = s.t / s.life;
+      s.m.position.y += s.rise * dt;
+      s.m.position.x += s.drift * dt;
+      s.m.scale.setScalar(0.6 + s.grow * k);
+      s.m.material.opacity = s.o0 * (1 - k * k);
+    }
     // projectiles
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];

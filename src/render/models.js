@@ -3,6 +3,7 @@
 // team color shows up on clothes, roofs trims and banners.
 
 import * as THREE from 'three';
+import { thatch, stoneBlocks, planks, plaster } from './textures.js';
 
 const matCache = new Map();
 export function mat(color) {
@@ -12,6 +13,63 @@ export function mat(color) {
     matCache.set(color, m);
   }
   return m;
+}
+
+// ---- textured surface materials --------------------------------------------
+// Buildings are assembled from flat-colored primitives, then a material-swap
+// pass replaces recognizable surface colors (thatch, stone, planks, plaster)
+// with tiling procedural textures. Units stay flat-shaded for readability.
+
+let texSets = null;
+function getTexSets() {
+  if (!texSets) {
+    texSets = { thatch: thatch(), stone: stoneBlocks(), planks: planks(), plaster: plaster() };
+  }
+  return texSets;
+}
+
+const texMatCache = new Map();
+function texMat(kind, colorHex) {
+  const key = kind + '|' + colorHex;
+  let m = texMatCache.get(key);
+  if (!m) {
+    const set = getTexSets()[kind];
+    const tint = new THREE.Color(colorHex).multiplyScalar(1.28);
+    m = new THREE.MeshStandardMaterial({
+      color: tint,
+      map: set.map,
+      normalMap: set.normalMap,
+      normalScale: new THREE.Vector2(0.85, 0.85),
+      roughness: 0.95,
+      metalness: 0,
+    });
+    texMatCache.set(key, m);
+  }
+  return m;
+}
+
+// color -> texture kind lookup, including per-team roof shades
+function surfaceKindFor(colorHex) {
+  switch (colorHex) {
+    case C.thatch: case C.thatchDark: case C.wheat: return 'thatch';
+    case C.stone: case C.stoneDark: return 'stone';
+    case C.plank: case C.wood: case C.woodDark: return 'planks';
+    case C.cream: case C.cloth: case 0xcdbb96: case 0xc9b289: case 0xc4a878: case 0xd9c9a3: return 'plaster';
+    default: return null;
+  }
+}
+
+export function applySurfaceTextures(group, teamColor) {
+  const roofShade = teamShade(teamColor ?? 0x888888, 0.62);
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    const hex = o.material?.color?.getHex?.();
+    if (hex === undefined) return;
+    let kind = surfaceKindFor(hex);
+    if (kind === null && hex === roofShade) kind = 'planks'; // team-colored roofs
+    if (kind) o.material = texMat(kind, hex);
+  });
+  return group;
 }
 
 const geoCache = new Map();
@@ -618,7 +676,7 @@ export function makeSiegeWorkshop(teamColor) {
   return g;
 }
 
-export const BUILDING_FACTORY = {
+const RAW_BUILDING_FACTORY = {
   towncenter: makeTownCenter,
   house: makeHouse,
   storehouse: makeStorehouse,
@@ -630,6 +688,11 @@ export const BUILDING_FACTORY = {
   stable: makeStable,
   siegeworkshop: makeSiegeWorkshop,
 };
+
+export const BUILDING_FACTORY = Object.fromEntries(
+  Object.entries(RAW_BUILDING_FACTORY).map(([type, fn]) =>
+    [type, (teamColor) => applySurfaceTextures(fn(teamColor), teamColor)])
+);
 
 // ---------------------------------------------------------------------------
 // RESOURCE NODES (non-instanced ones) and misc.

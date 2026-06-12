@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { MAP_SIZE, TILE, WORLD } from '../config.js';
 import { WATER_LEVEL } from '../world/map.js';
 import { mat, C } from './models.js';
+import { grassDetail, waterNormal } from './textures.js';
 
 export function buildTerrain(scene, map) {
   const segs = MAP_SIZE;
@@ -13,11 +14,11 @@ export function buildTerrain(scene, map) {
 
   const pos = geom.attributes.position;
   const colors = new Float32Array(pos.count * 3);
-  const grassA = new THREE.Color(0x5d9c44);
-  const grassB = new THREE.Color(0x74b153);
-  const grassDry = new THREE.Color(0x95a352);
+  const grassA = new THREE.Color(0x61a849);
+  const grassB = new THREE.Color(0x7cbd59);
+  const grassDry = new THREE.Color(0x9cab58);
   const dirt = new THREE.Color(0x8a6f48);
-  const sand = new THREE.Color(0xc9b16e);
+  const sand = new THREE.Color(0xcdb777);
   const rock = new THREE.Color(0x8d8a80);
   const tmp = new THREE.Color();
 
@@ -48,22 +49,40 @@ export function buildTerrain(scene, map) {
   geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geom.computeVertexNormals();
 
-  const ground = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  // Tiling grass detail texture; hue still comes from the vertex colors.
+  const detail = grassDetail();
+  detail.map.repeat.set(72, 72);
+  detail.normalMap.wrapS = detail.normalMap.wrapT = THREE.RepeatWrapping;
+  detail.normalMap.repeat.set(72, 72);
+  const ground = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    map: detail.map,
+    normalMap: detail.normalMap,
+    normalScale: new THREE.Vector2(0.6, 0.6),
+    roughness: 1,
+    metalness: 0,
+  }));
   ground.receiveShadow = true;
   ground.name = 'terrain';
   scene.add(ground);
 
-  // Water
+  // Water with animated normals
+  const wNorm = waterNormal();
+  wNorm.repeat.set(34, 34);
   const water = new THREE.Mesh(
     new THREE.PlaneGeometry(WORLD, WORLD),
-    new THREE.MeshLambertMaterial({ color: 0x3f7fc4, transparent: true, opacity: 0.82 })
+    new THREE.MeshStandardMaterial({
+      color: 0x3577bd, transparent: true, opacity: 0.78,
+      roughness: 0.18, metalness: 0.05,
+      normalMap: wNorm, normalScale: new THREE.Vector2(0.55, 0.55),
+    })
   );
   water.rotation.x = -Math.PI / 2;
   water.position.set(WORLD / 2, WATER_LEVEL - 0.12, WORLD / 2);
   scene.add(water);
 
   scatterDecor(scene, map);
-  return ground;
+  return { ground, water, waterNormalTex: wNorm };
 }
 
 // Decorative non-blocking detail: rocks, shrubs, flowers.

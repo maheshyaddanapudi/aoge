@@ -17,13 +17,13 @@ import { startMusic, combatPulse } from './music.js';
 import { voice } from './voice.js';
 
 const canvas = document.getElementById('game-canvas');
-const { renderer, scene, camera, updateSun } = createScene(canvas);
+const { renderer, scene, camera, updateSun, composer } = createScene(canvas);
 
 // --- world ------------------------------------------------------------------
 const map = new GameMap();
 const starts = pickStartLocations(map);
 const resourceDescriptors = generateResources(map, starts);
-const terrainMesh = buildTerrain(scene, map);
+const { ground: terrainMesh, waterNormalTex } = buildTerrain(scene, map);
 const trees = new TreeRenderer(scene);
 
 const game = new Game(scene, map, trees);
@@ -92,6 +92,12 @@ document.getElementById('mute-btn').addEventListener('click', (e) => {
 let running = false;
 const clock = new THREE.Clock();
 
+let waterT = 0;
+// Perf guard: if the GPU can't hold a playable framerate with the full
+// post-processing stack, drop to direct rendering at native-ish resolution.
+let usePost = true;
+let perfT = 0, perfN = 0;
+
 function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -100,7 +106,22 @@ function frame() {
   updateSun(rtsCam.smoothTarget);
   hud.update(dt);
   minimap.update(dt);
-  renderer.render(scene, camera);
+  waterT += dt;
+  waterNormalTex.offset.set(waterT * 0.012, waterT * 0.009);
+
+  if (running && usePost) {
+    perfN++; perfT += dt;
+    if (perfT > 5) {
+      if (perfN / perfT < 28) {
+        usePost = false;
+        renderer.setPixelRatio(1);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      }
+      perfT = 0; perfN = 0;
+    }
+  }
+  if (usePost) composer.render();
+  else renderer.render(scene, camera);
 }
 frame();
 
