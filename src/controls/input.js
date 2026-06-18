@@ -165,14 +165,36 @@ export class InputController {
       this.boxSelect(start, { x: e.clientX, y: e.clientY }, start.shift);
       return;
     }
-    // simple click select
+    // simple click select. Units are small on screen, so a click that doesn't
+    // land exactly on a unit grabs the nearest one within a few pixels; a unit
+    // also wins over a building/ground it's standing on.
     const hit = this.pick(e.clientX, e.clientY);
-    if (hit?.entity) {
-      this.select([hit.entity], start.shift);
-      this.selectFeedback([hit.entity]);
+    let ent = hit?.entity || null;
+    const near = this.unitNearScreen(e.clientX, e.clientY, 30);
+    if (near && (!ent || ent.isBuilding)) ent = near;
+    if (ent) {
+      this.select([ent], start.shift);
+      this.selectFeedback([ent]);
     } else if (!start.shift) {
       this.select([]);
     }
+  }
+
+  // Nearest unit whose projected position is within maxPx of (cx,cy), or null.
+  unitNearScreen(cx, cy, maxPx, ownerFilter = null) {
+    const v = new THREE.Vector3();
+    let best = null, bestD = maxPx * maxPx;
+    for (const u of this.game.units) {
+      if (u.dead) continue;
+      if (ownerFilter !== null && u.owner !== ownerFilter) continue;
+      v.set(u.x, u.group.position.y + 0.9, u.z).project(this.camera);
+      if (v.z >= 1) continue;
+      const sx = (v.x + 1) / 2 * window.innerWidth;
+      const sy = (1 - v.y) / 2 * window.innerHeight;
+      const d = (sx - cx) ** 2 + (sy - cy) ** 2;
+      if (d < bestD) { bestD = d; best = u; }
+    }
+    return best;
   }
 
   boxSelect(a, b, additive) {
@@ -215,8 +237,15 @@ export class InputController {
   issueContextCommand(cx, cy) {
     const sel = this.selection.filter(e => !e.dead && e.owner === PLAYER);
     if (!sel.length) return;
-    const hit = this.pick(cx, cy);
-    if (!hit) return;
+    let hit = this.pick(cx, cy);
+    if (!hit) hit = {};
+    // forgiveness: right-clicking near a unit targets it (attack/follow), as
+    // long as we didn't directly hit another entity or a resource node
+    if (!hit.entity && !hit.node) {
+      const nearU = this.unitNearScreen(cx, cy, 22);
+      if (nearU) hit = { entity: nearU };
+    }
+    if (!hit.entity && !hit.node && !hit.point) return;
 
     const units = sel.filter(e => e.isUnit);
     const buildingsSel = sel.filter(e => e.isBuilding);

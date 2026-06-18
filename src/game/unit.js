@@ -50,6 +50,20 @@ export class Unit {
     this.actionName = null;
     this.limbs = {};
     this.adoptModel();
+
+    // Invisible click hitbox: thin/skinned character meshes are hard to hit
+    // with a raycast, so give every unit a fat pickable cylinder. colorWrite/
+    // depthWrite off = renders nothing but still raycasts.
+    const hbH = type === 'catapult' ? 2.4 : type === 'knight' ? 2.8 : 2.0;
+    const hbR = this.radius + 0.35;
+    const hitbox = new THREE.Mesh(
+      new THREE.CylinderGeometry(hbR, hbR, hbH, 8),
+      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
+    );
+    hitbox.position.y = hbH / 2;
+    hitbox.userData.entity = this;
+    group.add(hitbox);
+
     game.scene.add(group);
 
     this.selRing = makeSelectionRing(this.radius + 0.55, owner === 0);

@@ -187,6 +187,7 @@ setSpeed(1);
 // Expose for debugging in the console.
 window.__game = game;
 window.__rtsCam = rtsCam;
+window.__input = input;
 window.__audio = { voice, combatPulse };
 window.__startGame = startGame;
 // World -> screen projection (CSS pixels) for tooling/automation.
