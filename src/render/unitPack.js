@@ -50,9 +50,11 @@ export async function loadUnitPack() {
     // attempt the real loads; if the pack is absent these reject and we
     // fall back to procedural models (no fragile HEAD probe — some static
     // hosts, including GitHub Pages, answer HEAD unreliably)
+    // Essential assets: no timeout — a cold CDN can legitimately take a while
+    // for the larger animation files, and a missing file rejects on its own.
     const files = [...new Set(Object.values(CHARACTERS).map(c => c.file))];
     await Promise.all(files.map(async (f) => {
-      const gltf = await withTimeout(loader.loadAsync(base + f + '.glb'), 15000, f);
+      const gltf = await loader.loadAsync(base + f + '.glb');
       const scene = gltf.scene;
       const box = new THREE.Box3().setFromObject(scene);
       scene.traverse((o) => {
@@ -64,21 +66,25 @@ export async function loadUnitPack() {
       protos.set(f, { scene, height: box.max.y - box.min.y });
     }));
     for (const animFile of ['Rig_Medium_General', 'Rig_Medium_MovementBasic']) {
-      const gltf = await withTimeout(loader.loadAsync(base + animFile + '.glb'), 15000, animFile);
+      const gltf = await loader.loadAsync(base + animFile + '.glb');
       for (const c of gltf.animations) clips.set(c.name, c);
     }
-    // weapons attached to hand-slot bones (optional; a failure just leaves the
-    // character unarmed and never blocks the pack from becoming ready)
+    // The pack is usable now; mark ready before optional enhancements so a
+    // slow/failed weapon or a combat-clip error can never block animation.
+    ready = protos.size > 0 && clips.size > 0;
+
+    // weapons attached to hand-slot bones (optional)
     await Promise.all(WEAPON_FILES.map(async (w) => {
       try {
-        const gltf = await withTimeout(loader.loadAsync(base + 'weapons/' + w + '.glb'), 8000, w);
+        const gltf = await withTimeout(loader.loadAsync(base + 'weapons/' + w + '.glb'), 10000, w);
         gltf.scene.traverse((o) => { if (o.isMesh) o.castShadow = true; });
         weaponProtos.set(w, gltf.scene);
       } catch { /* weapon missing/slow — character just goes unarmed */ }
     }));
-    // synthesize combat clips on the shared rig (no combat clips in FREE tier)
-    for (const c of buildCombatClips()) clips.set(c.name, c);
-    ready = protos.size > 0 && clips.size > 0;
+    // synthesize combat clips on the shared rig (optional enhancement)
+    try {
+      for (const c of buildCombatClips()) clips.set(c.name, c);
+    } catch (e) { console.warn('combat clips failed:', e.message); }
   } catch (e) {
     console.warn('unit pack unavailable:', e.message);
     return false;
