@@ -68,8 +68,7 @@ export class InputController {
     const hits = this.raycaster.intersectObjects(roots, true);
 
     // instanced trees
-    const treeHits = this.raycaster.intersectObjects(
-      [game.trees.trunks, game.trees.pines, game.trees.oaks], false);
+    const treeHits = this.raycaster.intersectObjects(game.trees.pickMeshes, false);
 
     const ground = this.raycaster.intersectObject(this.terrain, false);
 

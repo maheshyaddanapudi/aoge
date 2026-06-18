@@ -183,6 +183,49 @@ export function plaster(size = 128) {
   return { map: toTexture(c), normalMap: normalFrom(c, 0.9) };
 }
 
+// Tileable leaf-cluster texture for tree foliage: many small rounded leaves
+// (bright tops, darker gaps) so flat low-poly canopies read as foliage.
+// Luminance-centered near white so it modulates the per-instance green tint.
+// Returns { map, normalMap }.
+export function foliage(size = 256) {
+  const [c, ctx] = makeCanvas(size);
+  // dim base so gaps between leaves read as shadow
+  ctx.fillStyle = '#9c9c9c';
+  ctx.fillRect(0, 0, size, size);
+
+  let s = 0x1eaf >>> 0;
+  const rand = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+
+  const drawLeaf = (x, y, r, ang, lum) => {
+    // draw with 8 wrapped copies so the texture tiles seamlessly
+    for (let ox = -1; ox <= 1; ox++) {
+      for (let oy = -1; oy <= 1; oy++) {
+        ctx.save();
+        ctx.translate(x + ox * size, y + oy * size);
+        ctx.rotate(ang);
+        const g = ctx.createRadialGradient(0, -r * 0.2, r * 0.1, 0, 0, r);
+        g.addColorStop(0, `rgb(${lum},${lum},${lum})`);
+        g.addColorStop(1, `rgb(${(lum * 0.62) | 0},${(lum * 0.62) | 0},${(lum * 0.62) | 0})`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.ellipse(0, 0, r, r * 0.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  };
+
+  // layered leaf splatter, large clusters first then fine detail on top
+  for (const [count, rMin, rMax, lMin, lMax] of [[90, 18, 30, 175, 215], [220, 9, 17, 195, 240], [380, 4, 9, 210, 255]]) {
+    for (let i = 0; i < count; i++) {
+      drawLeaf(rand() * size, rand() * size, rMin + rand() * (rMax - rMin), rand() * Math.PI, (lMin + rand() * (lMax - lMin)) | 0);
+    }
+  }
+
+  const map = toTexture(c);
+  return { map, normalMap: normalFrom(c, 2.0) };
+}
+
 // Animated water normals (two offset layers of the same map look organic).
 export function waterNormal(size = 128) {
   const [c, ctx] = makeCanvas(size);
