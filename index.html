@@ -28,6 +28,11 @@
     #mute-btn { margin-left: 8px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px;
       color: #f0e6d2; font-size: 15px; padding: 3px 10px; cursor: pointer; }
     #mute-btn:hover { background: rgba(255,255,255,.1); }
+    #speed-ctrl { display: flex; gap: 2px; margin-left: 10px; }
+    .speed-btn { background: rgba(0,0,0,.35); border: 1px solid #5a4520; color: #cbbfa5;
+      font-size: 12px; padding: 3px 7px; cursor: pointer; border-radius: 3px; font-weight: bold; }
+    .speed-btn:hover { background: rgba(255,255,255,.1); }
+    .speed-btn.active { background: #7a5c28; color: #ffe9b0; border-color: #b08c40; }
 
     /* ---------- Alerts ---------- */
     #alerts { position: fixed; top: 52px; left: 50%; transform: translateX(-50%);
@@ -97,7 +102,7 @@
     #gameover-overlay h1.defeat { color: #ff6b5e; }
     .hidden { display: none !important; }
   </style>
-  <script type="module" crossorigin src="/aoge/assets/index-FZOTOMVf.js"></script>
+  <script type="module" crossorigin src="/aoge/assets/index-KsNGVPy3.js"></script>
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
@@ -108,6 +113,12 @@
     <div class="res"><span class="ico">&#129689;</span><span class="val" id="res-gold">0</span></div>
     <div class="res"><span class="ico">&#128100;</span><span class="val" id="res-pop">0/0</span></div>
     <div id="age-disp">Dark Age</div>
+    <div id="speed-ctrl" title="Game speed ( [ slower / ] faster )">
+      <button class="speed-btn" data-speed="1">1&times;</button>
+      <button class="speed-btn" data-speed="2">2&times;</button>
+      <button class="speed-btn" data-speed="3">3&times;</button>
+      <button class="speed-btn" data-speed="4">4&times;</button>
+    </div>
     <button id="mute-btn" title="Toggle sound">&#128266;</button>
   </div>
 
@@ -133,10 +144,16 @@
         <kbd>Left click</kbd> select &nbsp;&middot;&nbsp; <kbd>drag</kbd> box-select &nbsp;&middot;&nbsp; <kbd>Right click</kbd> move / gather / attack / build<br/>
         <kbd>W A S D</kbd> / <kbd>arrows</kbd> / screen edge &mdash; pan camera &nbsp;&middot;&nbsp; <kbd>wheel</kbd> zoom<br/>
         <kbd>Ctrl</kbd>+<kbd>1-9</kbd> set control group &nbsp;&middot;&nbsp; <kbd>1-9</kbd> recall &nbsp;&middot;&nbsp; <kbd>Esc</kbd> cancel placement<br/>
-        <kbd>H</kbd> jump to Town Center &nbsp;&middot;&nbsp; <kbd>.</kbd> next idle villager
+        <kbd>H</kbd> jump to Town Center &nbsp;&middot;&nbsp; <kbd>.</kbd> next idle villager &nbsp;&middot;&nbsp; <kbd>[</kbd> <kbd>]</kbd> game speed
       </div>
       <p style="color:#cbbfa5;font-size:13.5px">Villagers gather &#129717; wood, &#127830; food and &#129689; gold and construct buildings.<br/>Houses raise your population cap. Each Age unlocks stronger units and buildings.</p>
-      <button class="big-btn" id="start-btn">Start Game</button>
+      <p style="color:#ffd970;font-weight:bold;margin-top:14px">Choose difficulty</p>
+      <div style="display:flex;gap:12px;justify-content:center">
+        <button class="big-btn" id="start-easy" style="margin-top:6px">Easy</button>
+        <button class="big-btn" id="start-normal" style="margin-top:6px">Normal</button>
+        <button class="big-btn" id="start-hard" style="margin-top:6px">Hard</button>
+      </div>
+      <p style="color:#9c8f6e;font-size:12px;margin-top:8px">Easy: the enemy plays defensively. Normal: balanced. Hard: aggressive early raids.</p>
     </div>
   </div>
 
