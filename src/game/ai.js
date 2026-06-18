@@ -8,8 +8,17 @@ const VILL_TARGET_BY_AGE = [9, 13, 17, 20];
 const ARMY_CAP_BY_AGE = [7, 12, 18, 26];
 const ATTACK_AT_BY_AGE = [8, 10, 13, 17];
 
+// Difficulty profiles scale the AI's economy, army and aggression.
+// easy: passive (defends only), slow eco; normal: the tuned default;
+// hard: richer eco and earlier, larger attack waves.
+const DIFFICULTY = {
+  easy:   { trickle: [0, 0, 0], villMul: 0.6,  armyMul: 0.3, atkMul: 3,   firstWave: 1e9, waveMul: 3,   ecoScale: 1.8, maxAge: 1 },
+  normal: { trickle: [3, 3, 2], villMul: 1,    armyMul: 1,   atkMul: 1,   firstWave: 150, waveMul: 1,   ecoScale: 1,   maxAge: 4 },
+  hard:   { trickle: [6, 6, 4], villMul: 1.15, armyMul: 1.3, atkMul: 0.7, firstWave: 85,  waveMul: 0.7, ecoScale: 0.8, maxAge: 4 },
+};
+
 export class AI {
-  constructor(game, baseGx, baseGy) {
+  constructor(game, baseGx, baseGy, difficulty = 'normal') {
     this.game = game;
     this.me = ENEMY;
     this.baseGx = baseGx;
@@ -19,12 +28,22 @@ export class AI {
     this.baseZ = bz;
     this.ecoT = 0;
     this.stratT = 3;
-    this.waveT = 150;         // first attack pressure timer
     this.defendT = 0;
     this.attackTargetT = 0;
     this.attacking = false;
     this.trickleT = 0;
+    this.setDifficulty(difficulty);
   }
+
+  setDifficulty(name) {
+    this.difficulty = name;
+    this.d = DIFFICULTY[name] || DIFFICULTY.normal;
+    this.waveT = this.d.firstWave;
+  }
+
+  villTarget(age) { return Math.max(4, Math.round(VILL_TARGET_BY_AGE[age - 1] * this.d.villMul)); }
+  armyCap(age) { return Math.round(ARMY_CAP_BY_AGE[age - 1] * this.d.armyMul); }
+  attackThreshold(age) { return Math.round(ATTACK_AT_BY_AGE[age - 1] * this.d.atkMul); }
 
   p() { return this.game.players[this.me]; }
 
@@ -49,11 +68,12 @@ export class AI {
     if (this.trickleT >= 5) {
       this.trickleT -= 5;
       const r = this.p().res;
-      r.wood += 3; r.food += 3; r.gold += 2;
+      const [tw, tf, tg] = this.d.trickle;
+      r.wood += tw; r.food += tf; r.gold += tg;
     }
 
-    if (this.ecoT <= 0) { this.ecoT = 1.4; this.economy(); }
-    if (this.stratT <= 0) { this.stratT = 2.6; this.strategy(); }
+    if (this.ecoT <= 0) { this.ecoT = 1.4 * this.d.ecoScale; this.economy(); }
+    if (this.stratT <= 0) { this.stratT = 2.6 * this.d.ecoScale; this.strategy(); }
     if (this.waveT <= 0) this.tryAttack();
     if (this.attacking) {
       this.attackTargetT -= dt;
@@ -69,7 +89,7 @@ export class AI {
     const tc = this.myBuildings('towncenter')[0];
 
     // Train villagers
-    if (tc && tc.complete && vills.length + tc.trainQueue.length < VILL_TARGET_BY_AGE[p.age - 1]) {
+    if (tc && tc.complete && vills.length + tc.trainQueue.length < this.villTarget(p.age)) {
       if (tc.trainQueue.length < 2) tc.queueTrain('villager');
     }
 
@@ -168,10 +188,10 @@ export class AI {
     if (p.age >= 3 && this.myBuildings('stable').length === 0) this.construct('stable');
     if (p.age >= 4 && this.myBuildings('siegeworkshop').length === 0) this.construct('siegeworkshop');
 
-    // Age up
-    if (!p.ageResearchInProgress && p.age < AGES.length) {
+    // Age up (capped by difficulty — easy stays in the Dark Age)
+    if (!p.ageResearchInProgress && p.age < AGES.length && p.age < this.d.maxAge) {
       const next = AGES[p.age];
-      const enough = vills.length >= VILL_TARGET_BY_AGE[p.age - 1] - 2;
+      const enough = vills.length >= this.villTarget(p.age) - 2;
       if (enough && canAfford(p.res, next.cost) && tc.complete) {
         // keep a buffer so the eco doesn't stall
         const buffer = p.age === 1 ? 60 : 120;
@@ -181,7 +201,7 @@ export class AI {
 
     // Train army
     const armySize = this.army().length;
-    if (armySize < ARMY_CAP_BY_AGE[p.age - 1]) {
+    if (armySize < this.armyCap(p.age)) {
       for (const b of this.myBuildings()) {
         if (!b.complete || !b.def.trains || b.type === 'towncenter') continue;
         if (b.trainQueue.length >= 2) continue;
@@ -196,14 +216,14 @@ export class AI {
 
   tryAttack() {
     const army = this.army();
-    const threshold = ATTACK_AT_BY_AGE[this.p().age - 1];
+    const threshold = this.attackThreshold(this.p().age);
     if (army.length >= threshold) {
       this.attacking = true;
       this.attackTargetT = 0;
-      this.waveT = 100 + Math.random() * 40;
+      this.waveT = (100 + Math.random() * 40) * this.d.waveMul;
       this.retarget();
     } else {
-      this.waveT = 25;
+      this.waveT = 25 * this.d.waveMul;
     }
   }
 

@@ -1,3 +1,7 @@
 node_modules/
 dist/
 scripts/*.png
+
+scripts/video/
+scripts/*.webm
+scripts/*.mp4

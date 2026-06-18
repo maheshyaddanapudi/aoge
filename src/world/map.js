@@ -147,7 +147,7 @@ export class GameMap {
 // Resource node scattering. Returns descriptors; game.js turns them into nodes.
 // Keeps start areas (given as tile coords) clear, but guarantees a forest,
 // berries and gold near each start.
-export function generateResources(map, starts) {
+export function generateResources(map, starts, lite = false) {
   const out = [];
   const size = map.size;
   const rngSeed = map.seed ^ 0xabcdef;
@@ -163,8 +163,9 @@ export function generateResources(map, starts) {
     return true;
   };
 
-  // Forest blobs scattered around the map.
-  const forestCount = 26;
+  // Forest blobs scattered around the map. (Fewer in lite mode — foliage is
+  // the heaviest render cost on software GPUs.)
+  const forestCount = lite ? 7 : 26;
   for (let f = 0; f < forestCount; f++) {
     const cx = 6 + rand() * (size - 12), cy = 6 + rand() * (size - 12);
     if (!clearOf(cx, cy, 11)) continue;
@@ -199,7 +200,7 @@ export function generateResources(map, starts) {
   for (const [sx, sy] of starts) {
     // forest arc
     const ang0 = rand() * Math.PI * 2;
-    for (let k = 0; k < 26; k++) {
+    for (let k = 0; k < (lite ? 8 : 26); k++) {
       const ang = ang0 + (rand() - 0.5) * 1.7;
       const r = 9 + rand() * 4;
       tryPlace(Math.round(sx + Math.cos(ang) * r), Math.round(sy + Math.sin(ang) * r), 'tree');

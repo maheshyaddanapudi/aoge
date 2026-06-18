@@ -21,12 +21,17 @@ import { voice } from './voice.js';
 const canvas = document.getElementById('game-canvas');
 const { renderer, scene, camera, updateSun, composer } = createScene(canvas);
 
+// Lightweight render mode (?lite): no shadows or post-processing — far higher
+// FPS on weak/software GPUs (used for headless capture and as a perf option).
+const LITE = new URLSearchParams(location.search).has('lite');
+if (LITE) renderer.shadowMap.enabled = false;
+
 // --- world ------------------------------------------------------------------
 const map = new GameMap();
 const starts = pickStartLocations(map);
-const resourceDescriptors = generateResources(map, starts);
+const resourceDescriptors = generateResources(map, starts, LITE);
 const { ground: terrainMesh, waterNormalTex } = buildTerrain(scene, map);
-const trees = new TreeRenderer(scene);
+const trees = new TreeRenderer(scene, 1000, LITE);
 await trees.load();
 
 const game = new Game(scene, map, trees);
@@ -105,13 +110,24 @@ const clock = new THREE.Clock();
 let waterT = 0;
 // Perf guard: if the GPU can't hold a playable framerate with the full
 // post-processing stack, drop to direct rendering at native-ish resolution.
-let usePost = true;
+let usePost = !LITE;
 let perfT = 0, perfN = 0;
+
+// Game speed: run the simulation in N small sub-steps per rendered frame so
+// movement and pathing stay stable while time fast-forwards.
+let gameSpeed = 1;
+function setSpeed(n) {
+  gameSpeed = Math.max(1, Math.min(4, n | 0));
+  for (const b of document.querySelectorAll('.speed-btn')) {
+    b.classList.toggle('active', +b.dataset.speed === gameSpeed);
+  }
+}
+window.__setSpeed = setSpeed;
 
 function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (running) game.update(dt);
+  if (running) for (let i = 0; i < gameSpeed; i++) game.update(dt);
   rtsCam.update(dt);
   updateSun(rtsCam.smoothTarget);
   hud.update(dt);
@@ -135,16 +151,46 @@ function frame() {
 }
 frame();
 
-document.getElementById('start-btn').addEventListener('click', () => {
+function startGame(difficulty) {
+  game.ai.setDifficulty(difficulty);
+  // Easy mode also gives the player a starting stockpile so a quick army is
+  // viable without a long economy build-up.
+  if (difficulty === 'easy') {
+    const r = game.players[PLAYER].res;
+    r.wood += 900; r.food += 3500; r.gold += 1800;
+  }
   initAudio();
   startMusic();
   document.getElementById('start-overlay').classList.add('hidden');
   running = true;
   clock.getDelta();
-  hud.alert('Gather resources and build your empire. The enemy is preparing…', true);
+  const label = difficulty[0].toUpperCase() + difficulty.slice(1);
+  hud.alert(`${label} game — gather resources and build your empire. The enemy is preparing…`, true);
+}
+
+for (const diff of ['easy', 'normal', 'hard']) {
+  const btn = document.getElementById('start-' + diff);
+  if (btn) btn.addEventListener('click', () => startGame(diff));
+}
+
+// Speed control buttons + keyboard ( [ slower, ] faster ).
+for (const b of document.querySelectorAll('.speed-btn')) {
+  b.addEventListener('click', () => setSpeed(+b.dataset.speed));
+}
+window.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'BracketRight') setSpeed(gameSpeed + 1);
+  else if (e.code === 'BracketLeft') setSpeed(gameSpeed - 1);
 });
+setSpeed(1);
 
 // Expose for debugging in the console.
 window.__game = game;
 window.__rtsCam = rtsCam;
 window.__audio = { voice, combatPulse };
+window.__startGame = startGame;
+// World -> screen projection (CSS pixels) for tooling/automation.
+window.__project = (wx, wy, wz) => {
+  const v = new THREE.Vector3(wx, wy, wz).project(camera);
+  return { x: (v.x + 1) / 2 * window.innerWidth, y: (1 - v.y) / 2 * window.innerHeight, z: v.z };
+};

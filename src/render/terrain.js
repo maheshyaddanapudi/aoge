@@ -168,9 +168,12 @@ function boxProjectUV(geometry, tile) {
 }
 
 export class TreeRenderer {
-  constructor(scene, capacity = 1000) {
+  constructor(scene, capacity = 1000, lite = false) {
     this.scene = scene;
     this.capacity = capacity;
+    // lite: render only a fraction of trees (foliage is the heaviest cost on
+    // software GPUs); the rest remain as invisible (still-choppable) nodes.
+    this.lite = lite;
     this.zero = new THREE.Matrix4().makeScale(0, 0, 0);
     this.tmpM = new THREE.Matrix4();
     this.tmpC = new THREE.Color();
@@ -282,7 +285,11 @@ export class TreeRenderer {
   }
 
   flush() {
+    // Only draw as many instances as we actually placed — zero-scaled slots
+    // still run the vertex shader, so capping count is a big GPU saving.
+    const n = Math.max(1, this.next);
     for (const m of this.pickMeshes) {
+      m.count = n;
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
     }
