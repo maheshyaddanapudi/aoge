@@ -603,7 +603,10 @@ export class Unit {
       let want = 'idle';
       if (this.moving) want = 'walk';
       else if (this.state === 'gathering' || this.state === 'building') want = 'work';
-      else if (this.state === 'fighting') want = this.def.projectile ? 'shoot' : 'work';
+      else if (this.state === 'fighting') {
+        if (this.def.projectile) want = this.actions?.shoot ? 'shoot' : 'work';
+        else want = this.actions?.melee ? 'melee' : 'work';
+      }
       this.playAction(want);
       this.mixer.update(dt);
       this.healthBar.set(this.hp / this.maxHp, this.selected || this.hp < this.maxHp);

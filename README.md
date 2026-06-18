@@ -1,10 +1,23 @@
 # Age of Empires JS — Browser RTS
 
 A fully playable Age of Empires-style real-time strategy game running entirely in the
-browser, rendered in 3D with Three.js. No assets — every unit, building and tree is
-procedurally modeled low-poly geometry with real-time shadows.
+browser, rendered in 3D with Three.js. Buildings, units and trees use CC0 low-poly
+art packs (Quaternius, KayKit, Kenney), with procedural fallbacks; everything has
+real-time shadows, post-processing and procedural surface textures.
 
 **Play it live:** https://maheshyaddanapudi.github.io/aoge/
+
+## Art & assets
+
+- **Buildings** — Quaternius *Ultimate Fantasy RTS* (CC0): models evolve across the
+  four ages (palisade fort → stone castle).
+- **Units** — KayKit *Adventurers* (CC0): rigged characters with skeletal animation
+  (run, idle, death) plus **procedurally authored combat clips** — real sword/axe
+  swings and bow draws — with weapons attached to the rig's hand slots.
+- **Trees** — Kenney *Nature Kit* (CC0) low-poly species, instanced for performance,
+  with a procedurally generated leaf-cluster foliage texture + normal map.
+- All asset packs are CC0 (public domain); credits live next to the model files.
+  If a pack is absent the game falls back to fully procedural models.
 
 ## The game
 
