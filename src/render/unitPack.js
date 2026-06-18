@@ -47,10 +47,9 @@ export async function loadUnitPack() {
   const base = import.meta.env.BASE_URL + 'models/units/';
   const loader = new GLTFLoader();
   try {
-    // probe one file; if absent, stay procedural
-    const head = await fetch(base + 'Rogue.glb', { method: 'HEAD' });
-    if (!head.ok) return false;
-
+    // attempt the real loads; if the pack is absent these reject and we
+    // fall back to procedural models (no fragile HEAD probe — some static
+    // hosts, including GitHub Pages, answer HEAD unreliably)
     const files = [...new Set(Object.values(CHARACTERS).map(c => c.file))];
     await Promise.all(files.map(async (f) => {
       const gltf = await withTimeout(loader.loadAsync(base + f + '.glb'), 15000, f);

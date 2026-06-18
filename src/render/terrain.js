@@ -202,8 +202,8 @@ export class TreeRenderer {
   async load() {
     const base = import.meta.env.BASE_URL + 'models/nature/';
     try {
-      const head = await fetch(base + TREE_FILES[0].file + '.glb', { method: 'HEAD' });
-      if (!head.ok) throw new Error('nature pack missing');
+      // attempt real loads; reject -> procedural fallback (no HEAD probe, which
+      // some static hosts answer unreliably)
       const loader = new GLTFLoader();
       await Promise.all(TREE_FILES.map(async (def, si) => {
         const gltf = await loader.loadAsync(base + def.file + '.glb');
