@@ -41,6 +41,144 @@ export class InputController {
       this.rtsCam.zoomBy(e.deltaY, gp);
     }, { passive: false });
     window.addEventListener('keydown', (e) => this.onKeyDown(e));
+
+    this.setupTouch();
+  }
+
+  // ---- touch / mobile ---------------------------------------------------------
+  // On a touchscreen there is no right-click, so a TAP is contextual: tap your
+  // own unit/building to select it; with a selection, tap a tree/enemy/ground to
+  // gather/attack/move (the right-click equivalent). One finger drags to pan,
+  // two fingers pinch to zoom, and an armable button enables box-select.
+  setupTouch() {
+    const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    this.boxArmed = false;
+    this.touch = null;     // single-finger gesture state
+    this.pinch = null;     // two-finger gesture state
+    const canvas = this.canvas;
+
+    const TAP_MOVE = 12;   // px of movement still counted as a tap
+    const TAP_TIME = 400;  // ms
+
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        this.touch = { x0: t.clientX, y0: t.clientY, x: t.clientX, y: t.clientY, t0: performance.now(), moved: false };
+        if (this.placing) this.updateGhost(t.clientX, t.clientY);
+        if (this.boxArmed) { this.dragStart = { x: t.clientX, y: t.clientY, shift: false }; this.dragging = false; }
+      } else if (e.touches.length === 2) {
+        // entering pinch cancels any pending single-finger gesture/box
+        this.touch = null; this.dragStart = null; this.dragging = false; this.boxEl.style.display = 'none';
+        if (this.placing) { this.cancelPlacement(); }
+        const [a, b] = e.touches;
+        this.pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+                       mx: (a.clientX + b.clientX) / 2, my: (a.clientY + b.clientY) / 2 };
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (this.pinch && e.touches.length >= 2) {
+        e.preventDefault();
+        const [a, b] = e.touches;
+        const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+        const mx = (a.clientX + b.clientX) / 2, my = (a.clientY + b.clientY) / 2;
+        if (this.pinch.d > 0) {
+          const ratio = this.pinch.d / d; // fingers apart -> ratio<1 -> zoom in
+          this.rtsCam.dist = THREE.MathUtils.clamp(this.rtsCam.dist * ratio, this.rtsCam.minDist, this.rtsCam.maxDist);
+        }
+        this.panScreen(this.pinch.mx, this.pinch.my, mx, my);
+        this.pinch = { d, mx, my };
+        return;
+      }
+      if (this.touch && e.touches.length === 1) {
+        e.preventDefault();
+        const t = e.touches[0];
+        const px = this.touch.x, py = this.touch.y;
+        this.touch.x = t.clientX; this.touch.y = t.clientY;
+        if (Math.hypot(t.clientX - this.touch.x0, t.clientY - this.touch.y0) > TAP_MOVE) this.touch.moved = true;
+        if (this.placing) { this.updateGhost(t.clientX, t.clientY); return; }
+        if (this.boxArmed && this.dragStart) {       // draw selection box
+          this.dragging = true;
+          const x0 = Math.min(t.clientX, this.dragStart.x), y0 = Math.min(t.clientY, this.dragStart.y);
+          this.boxEl.style.display = 'block';
+          this.boxEl.style.left = x0 + 'px'; this.boxEl.style.top = y0 + 'px';
+          this.boxEl.style.width = Math.abs(t.clientX - this.dragStart.x) + 'px';
+          this.boxEl.style.height = Math.abs(t.clientY - this.dragStart.y) + 'px';
+          return;
+        }
+        if (this.touch.moved) this.panScreen(px, py, t.clientX, t.clientY); // drag to pan
+      }
+    }, { passive: false });
+
+    window.addEventListener('touchend', (e) => {
+      if (this.pinch && e.touches.length < 2) { this.pinch = null; }
+      if (!this.touch) return;
+      const tt = this.touch;
+      const isTap = !tt.moved && (performance.now() - tt.t0) < TAP_TIME;
+      if (e.touches.length === 0) {
+        if (this.placing) {                          // placement: tap/drag-then-lift places
+          this.tryPlace(false);
+        } else if (this.boxArmed) {                  // armed: a drag box-selects, a tap just disarms
+          if (this.dragging) this.boxSelect(this.dragStart, { x: tt.x, y: tt.y }, false);
+          this.setBoxArmed(false);
+        } else if (isTap) {
+          this.handleTap(tt.x0, tt.y0);
+        }
+        this.dragStart = null; this.dragging = false; this.boxEl.style.display = 'none';
+        this.touch = null;
+      }
+    }, { passive: false });
+
+    // armable box-select button (shown only on touch devices)
+    const btn = document.getElementById('touch-box-btn');
+    if (btn) {
+      if (isTouch) btn.classList.remove('hidden');
+      btn.addEventListener('click', () => this.setBoxArmed(!this.boxArmed));
+    }
+    if (isTouch) document.body.classList.add('is-touch');
+  }
+
+  setBoxArmed(on) {
+    this.boxArmed = on;
+    const btn = document.getElementById('touch-box-btn');
+    if (btn) btn.classList.toggle('armed', on);
+  }
+
+  // Pan the camera so the world point under (px,py) follows to (qx,qy).
+  panScreen(px, py, qx, qy) {
+    const p1 = this.screenToPlane(px, py);
+    const p2 = this.screenToPlane(qx, qy);
+    if (p1 && p2) this.rtsCam.panBy(p1.x - p2.x, p1.z - p2.z);
+  }
+
+  // Intersect the pick ray with the horizontal plane at the camera's focus height.
+  screenToPlane(x, y) {
+    this.setRayFrom(x, y);
+    const ray = this.raycaster.ray;
+    const planeY = this.rtsCam.smoothTarget.y;
+    if (Math.abs(ray.direction.y) < 1e-5) return null;
+    const t = (planeY - ray.origin.y) / ray.direction.y;
+    if (t <= 0) return null;
+    return new THREE.Vector3().copy(ray.direction).multiplyScalar(t).add(ray.origin);
+  }
+
+  // A tap is select-or-command, depending on what's under it and the selection.
+  handleTap(x, y) {
+    const hit = this.pick(x, y);
+    // 1) tapping (or near) your own unit selects it
+    const ownNear = this.unitNearScreen(x, y, 34, PLAYER);
+    const ownUnit = (hit?.entity?.isUnit && hit.entity.owner === PLAYER) ? hit.entity : ownNear;
+    if (ownUnit) { this.select([ownUnit]); this.selectFeedback([ownUnit]); return; }
+    // 2) tapping your own building selects it
+    if (hit?.entity?.isBuilding && hit.entity.owner === PLAYER) {
+      this.select([hit.entity]); this.selectFeedback([hit.entity]); return;
+    }
+    // 3) with a selection, the tap issues a command (move/gather/attack/rally)
+    if (this.selection.some(e => !e.dead && e.owner === PLAYER)) { this.issueContextCommand(x, y); return; }
+    // 4) otherwise inspect an enemy entity, or clear
+    if (hit?.entity) { this.select([hit.entity]); this.onSelectionChange(this.selection); return; }
+    this.select([]);
   }
 
   // ---- picking helpers --------------------------------------------------------
