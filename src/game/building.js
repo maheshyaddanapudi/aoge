@@ -50,6 +50,20 @@ export class Building {
     this.modelGroup = new THREE.Group();
     this.modelGroup.add(this.buildModel());
     group.add(this.modelGroup);
+
+    // Invisible click hitbox over the whole footprint so the building (and
+    // especially a barely-started construction site, which renders as a flat
+    // sliver) is always easy to tap/click to select or resume building.
+    const hbS = this.size * TILE;
+    const hbH = Math.max(2.5, this.size * 1.6);
+    const hitbox = new THREE.Mesh(
+      new THREE.BoxGeometry(hbS * 0.96, hbH, hbS * 0.96),
+      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
+    );
+    hitbox.position.y = hbH / 2;
+    hitbox.userData.entity = this;
+    group.add(hitbox);
+
     this.group = group;
     game.scene.add(group);
 

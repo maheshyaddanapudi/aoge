@@ -410,7 +410,7 @@ export class InputController {
         this.ackFeedback(units.filter(u => u.type === 'villager'));
       } else if (t.isBuilding && t.def.isFarm) {
         const vills = units.filter(u => u.type === 'villager');
-        if (vills.length) vills[0].orderGatherFarm(t);
+        for (const v of vills) v.orderGatherFarm(t);
         this.ackFeedback(vills);
       } else if (t.isBuilding && t.def.dropoff) {
         for (const u of units) {

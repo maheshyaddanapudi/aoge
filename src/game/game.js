@@ -290,6 +290,30 @@ export class Game {
     return best;
   }
 
+  // A node is gatherable only if a villager can stand next to it — i.e. its
+  // tile has at least one walkable neighbour. Trees deep inside a forest have
+  // none, so they can't be harvested directly.
+  nodeReachable(node) {
+    if (!node || node.dead) return false;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        if (this.map.isWalkable(node.gx + dx, node.gy + dy)) return true;
+      }
+    }
+    return false;
+  }
+
+  findNearestReachableNode(res, x, z, maxR = 40, exclude = null) {
+    let best = null, bestD = Infinity;
+    for (const n of this.nodes) {
+      if (n.dead || n === exclude || n.res !== res || n.amount <= 0) continue;
+      const d = Math.hypot(n.wx - x, n.wz - z);
+      if (d <= maxR && d < bestD && this.nodeReachable(n)) { bestD = d; best = n; }
+    }
+    return best;
+  }
+
   nearestEnemy(owner, x, z, r, includeBuildings = false) {
     let best = null, bestD = Infinity;
     for (const u of this.units) {

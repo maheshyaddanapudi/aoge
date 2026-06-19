@@ -133,6 +133,12 @@ export class Unit {
 
   orderGather(node) {
     if (this.type !== 'villager' || !node || node.amount <= 0) return;
+    // If the chosen node can't be reached (e.g. a tree boxed in by other
+    // trees), redirect to the nearest same-resource node that can be.
+    if (!this.game.nodeReachable(node)) {
+      const alt = this.game.findNearestReachableNode(node.res, node.wx, node.wz, 60, node);
+      if (alt) node = alt;
+    }
     this.order = { kind: 'gather', node };
     this.state = 'toResource';
     this.requestPath(node.wx, node.wz);
@@ -307,11 +313,16 @@ export class Unit {
       }
     }
     if (this.followPath(dt)) {
-      // arrived but still not in range — path again once, else give up
+      // arrived but still not in range — try once more, then look elsewhere
       const tx = o.kind === 'gather' ? o.node.wx : o.farm.cx;
       const tz = o.kind === 'gather' ? o.node.wz : o.farm.cz;
-      if (this.repathT <= 0) this.clearOrder();
-      else this.requestPath(tx, tz);
+      if (this.repathT <= 0) {
+        if (o.kind === 'gather') {
+          const alt = this.game.findNearestReachableNode(o.node.res, this.x, this.z, 50, o.node);
+          if (alt) { this.orderGather(alt); return; }
+        }
+        this.clearOrder();
+      } else this.requestPath(tx, tz);
     }
     this.repathT -= dt;
   }
@@ -389,10 +400,10 @@ export class Unit {
     }
   }
 
-  // When a node runs dry, hop to a nearby node of the same resource.
+  // When a node runs dry, hop to a nearby reachable node of the same resource.
   findNextNode(oldNode) {
     if (!oldNode) { this.clearOrder(); return; }
-    const next = this.game.findNearestNode(oldNode.res, oldNode.wx, oldNode.wz, 18);
+    const next = this.game.findNearestReachableNode(oldNode.res, oldNode.wx, oldNode.wz, 22, oldNode);
     if (next) {
       if (this.carry && this.carry.amt > 0 && this.carry.res === oldNode.res) {
         this.order = { kind: 'gather', node: next };
