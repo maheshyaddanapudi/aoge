@@ -139,6 +139,20 @@ export class Building {
     if (this.progress >= 1) this.finishConstruction();
   }
 
+  // Repairing a damaged completed building: half construction speed, and it
+  // slowly consumes the owner's wood (fractional costs accumulate).
+  repairTick(dt) {
+    if (!this.complete || this.dead || this.hp >= this.maxHp) return;
+    const res = this.game.players[this.owner].res;
+    const cost = dt * 0.5; // wood per second per repairer
+    if (res.wood < cost) return;
+    res.wood -= cost;
+    const n = Math.max(1, this.builderCount || 1);
+    this.buildersNow = (this.buildersNow || 0) + 1;
+    const rate = (dt / this.def.buildTime) * 0.5 * (Math.pow(n, 0.7) / n);
+    this.hp = Math.min(this.maxHp, this.hp + rate * this.maxHp);
+  }
+
   finishConstruction() {
     this.complete = true;
     // keep accumulated HP — damage dealt during construction stays dealt

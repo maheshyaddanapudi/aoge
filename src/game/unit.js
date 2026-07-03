@@ -167,8 +167,10 @@ export class Unit {
     this.requestPath(farm.cx, farm.cz);
   }
 
+  // Build an unfinished building — or repair a damaged completed one.
   orderBuild(building) {
-    if (this.type !== 'villager' || !building || building.complete) return;
+    if (this.type !== 'villager' || !building || building.dead) return;
+    if (building.complete && building.hp >= building.maxHp - 0.5) return;
     this.order = { kind: 'build', building };
     this.state = 'toBuild';
     this.requestPath(building.cx, building.cz);
@@ -459,9 +461,15 @@ export class Unit {
     }
   }
 
+  // A build order is finished when the building stands complete at full HP
+  // (construction) or is back to full HP (repair).
+  buildOrderDone(b) {
+    return b.complete && b.hp >= b.maxHp - 0.5;
+  }
+
   updateToBuild(dt) {
     const b = this.order?.building;
-    if (!b || b.dead || b.complete) {
+    if (!b || b.dead || this.buildOrderDone(b)) {
       if (b && b.complete && b.def.isFarm) { this.orderGatherFarm(b); return; }
       this.clearOrder();
       return;
@@ -481,13 +489,14 @@ export class Unit {
   updateBuilding(dt) {
     const b = this.order?.building;
     if (!b || b.dead) { this.clearOrder(); return; }
-    if (b.complete) {
+    if (this.buildOrderDone(b)) {
       if (b.def.isFarm) { this.orderGatherFarm(b); return; }
       this.clearOrder();
       return;
     }
     if (this.distTo(b) > 2.4) { this.state = 'toBuild'; this.requestPath(b.cx, b.cz); return; }
-    b.constructionTick(dt);
+    if (b.complete) b.repairTick(dt);
+    else b.constructionTick(dt);
     if (this.actionT <= 0) {
       this.actionT = 0.5;
       if (Math.random() < 0.5) this.game.sound('hammer');

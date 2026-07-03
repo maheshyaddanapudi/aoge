@@ -183,7 +183,9 @@ export class InputController {
       // own building: command when it means something, otherwise switch selection
       if (ent?.isBuilding && ent.owner === PLAYER) {
         const carrying = selUnits.some(u => u.type === 'villager' && u.carry?.amt > 0);
-        if (!ent.complete || ent.def.isFarm || (ent.def.dropoff && carrying)) {
+        const hasVill = selUnits.some(u => u.type === 'villager');
+        if (!ent.complete || ent.def.isFarm || (ent.def.dropoff && carrying) ||
+            (hasVill && ent.hp < ent.maxHp - 0.5)) {
           return this.dispatchContext({ entity: ent });
         }
         this.select([ent]); this.selectFeedback([ent]); return;
@@ -442,7 +444,8 @@ export class InputController {
       if (t.owner !== PLAYER) {
         for (const u of units) u.orderAttack(t);
         this.ackFeedback(units);
-      } else if (t.isBuilding && !t.complete) {
+      } else if (t.isBuilding && (!t.complete || t.hp < t.maxHp - 0.5) && !t.def.isFarm) {
+        // construct or repair
         for (const u of units) if (u.type === 'villager') u.orderBuild(t);
         this.ackFeedback(units.filter(u => u.type === 'villager'));
       } else if (t.isBuilding && t.def.isFarm) {

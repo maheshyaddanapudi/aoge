@@ -5,8 +5,8 @@
 import { TILE, PLAYER, ENEMY, BUILDINGS, UNITS, AGES, canAfford } from '../config.js';
 
 const VILL_TARGET_BY_AGE = [9, 13, 17, 20];
-const ARMY_CAP_BY_AGE = [7, 12, 18, 26];
-const ATTACK_AT_BY_AGE = [8, 10, 13, 17];
+const ARMY_CAP_BY_AGE = [8, 13, 19, 27];
+const ATTACK_AT_BY_AGE = [6, 9, 12, 16]; // always below the cap so waves actually launch
 
 // Difficulty profiles scale the AI's economy, army and aggression.
 // easy: passive (defends only), slow eco; normal: the tuned default;
@@ -42,7 +42,12 @@ export class AI {
   }
 
   villTarget(age) { return Math.max(4, Math.round(VILL_TARGET_BY_AGE[age - 1] * this.d.villMul)); }
-  armyCap(age) { return Math.round(ARMY_CAP_BY_AGE[age - 1] * this.d.armyMul); }
+  armyCap(age) {
+    // scale up with the player's army so the AI doesn't get out-massed
+    const base = Math.round(ARMY_CAP_BY_AGE[age - 1] * this.d.armyMul);
+    const playerArmy = this.game.units.filter(u => u.owner === 0 && !u.dead && u.type !== 'villager').length;
+    return Math.max(base, Math.min(40, Math.round(playerArmy * 1.1 * this.d.armyMul)));
+  }
   attackThreshold(age) { return Math.round(ATTACK_AT_BY_AGE[age - 1] * this.d.atkMul); }
 
   p() { return this.game.players[this.me]; }
@@ -97,6 +102,27 @@ export class AI {
     if (p.popCap - p.popUsed < 4 && p.popCap < 120) {
       const housePending = this.myBuildings('house').some(h => !h.complete);
       if (!housePending) this.construct('house');
+    }
+
+    // Repair: send one idle villager to the most damaged completed building
+    const hurt = this.myBuildings().filter(b => b.complete && b.hp < b.maxHp * 0.7)
+      .sort((a, b2) => a.hp / a.maxHp - b2.hp / b2.maxHp)[0];
+    if (hurt && p.res.wood > 30) {
+      const alreadyRepairing = vills.some(v => v.order?.kind === 'build' && v.order.building === hurt);
+      if (!alreadyRepairing) {
+        const fixer = vills.find(v => v.state === 'idle') || null;
+        if (fixer) fixer.orderBuild(hurt);
+      }
+    }
+
+    // Expansion: when the local economy runs dry, push a storehouse out to
+    // the nearest remaining cluster instead of starving in place.
+    for (const res of ['wood', 'gold']) {
+      const local = this.game.findNearestReachableNode(res, this.baseX, this.baseZ, 70);
+      if (!local) {
+        const remote = this.game.findNearestReachableNode(res, this.baseX, this.baseZ, 400);
+        if (remote) this.constructNear('storehouse', remote.wx, remote.wz);
+      }
     }
 
     // Resource assignment for idle villagers
@@ -199,11 +225,16 @@ export class AI {
       }
     }
 
-    // Train army
+    // Train army. When the player turtles behind towers/walls, prioritize
+    // siege production so waves can actually crack the shell.
     const armySize = this.army().length;
     if (armySize < this.armyCap(p.age)) {
-      for (const b of this.myBuildings()) {
-        if (!b.complete || !b.def.trains || b.type === 'towncenter') continue;
+      const playerDef = this.game.buildings.filter(b =>
+        b.owner === PLAYER && !b.dead && (b.type === 'tower' || b.def.isWall)).length;
+      const producers = this.myBuildings().filter(b =>
+        b.complete && b.def.trains && b.type !== 'towncenter');
+      if (playerDef >= 4) producers.sort((a, b2) => (b2.type === 'siegeworkshop' ? 1 : 0) - (a.type === 'siegeworkshop' ? 1 : 0));
+      for (const b of producers) {
         if (b.trainQueue.length >= 2) continue;
         for (const ut of b.def.trains) {
           if (p.age >= UNITS[ut].age) b.queueTrain(ut);
@@ -214,12 +245,17 @@ export class AI {
 
   // ---- combat ----------------------------------------------------------------------
 
+  // Waves are launched as a snapshot: only wave members push the attack, new
+  // recruits stay home to defend until the next wave masses. Waves retreat
+  // when they've lost most of their strength instead of trickling to death.
   tryAttack() {
     const army = this.army();
     const threshold = this.attackThreshold(this.p().age);
     if (army.length >= threshold) {
       this.attacking = true;
       this.attackTargetT = 0;
+      this.wave = army.map(u => u.id);
+      this.waveSize0 = this.wave.length;
       this.waveT = (100 + Math.random() * 40) * this.d.waveMul;
       this.retarget();
     } else {
@@ -227,39 +263,48 @@ export class AI {
     }
   }
 
+  waveUnits() {
+    if (!this.wave) return [];
+    return this.game.units.filter(u => !u.dead && this.wave.includes(u.id));
+  }
+
   retarget() {
     const target = this.pickPlayerTarget();
-    if (!target) { this.attacking = false; return; }
-    const idleArmy = this.army().filter(u =>
-      u.state === 'idle' || u.state === 'move' ||
-      (u.order?.kind === 'attackmove'));
-    for (const u of idleArmy) {
-      u.orderAttackMove(target.isBuilding ? target.cx : target.x, target.isBuilding ? target.cz : target.z);
+    if (!target) { this.attacking = false; this.wave = null; return; }
+    const members = this.waveUnits();
+    // retreat when the wave has lost ~65% of its strength
+    if (members.length < Math.max(2, this.waveSize0 * 0.35)) {
+      for (const u of members) u.orderMove(this.baseX, this.baseZ);
+      this.attacking = false;
+      this.wave = null;
+      return;
     }
-    if (this.army().length < 3) this.attacking = false;
+    for (const u of members) {
+      const busy = u.state === 'fighting' || u.state === 'toAttack';
+      if (!busy) u.orderAttackMove(target.isBuilding ? target.cx : target.x, target.isBuilding ? target.cz : target.z);
+    }
   }
 
   pickPlayerTarget() {
     const pb = this.game.buildings.filter(b => b.owner === PLAYER && !b.dead);
     if (!pb.length) return null;
-    // prefer military production, then TC, then anything
+    // prefer military production, then TC, then anything (walls last resort)
     const prio = pb.find(b => b.def.trains && b.type !== 'towncenter') ||
-                 pb.find(b => b.type === 'towncenter') || pb[0];
+                 pb.find(b => b.type === 'towncenter') ||
+                 pb.find(b => !b.def.isWall) || pb[0];
     return prio;
   }
 
   onDamage(target, attacker) {
     if (target.owner !== this.me || !attacker || attacker.dead || attacker.owner === this.me) return;
     if (this.defendT > 0) return;
-    // If our base/economy is hit, rally nearby army to defend.
-    const nearBase = Math.hypot(
-      (target.isBuilding ? target.cx : target.x) - this.baseX,
-      (target.isBuilding ? target.cz : target.z) - this.baseZ) < 55;
-    if (!nearBase) return;
-    this.defendT = 10;
+    // Respond wherever we're hit — home base, expansion storehouse, anywhere.
+    this.defendT = 4;
     const ax = attacker.isBuilding ? attacker.cx : attacker.x;
     const az = attacker.isBuilding ? attacker.cz : attacker.z;
+    const waveIds = this.wave || [];
     for (const u of this.army()) {
+      if (waveIds.includes(u.id)) continue; // the wave keeps pressing the attack
       const busyFighting = u.state === 'fighting' || u.state === 'toAttack';
       if (!busyFighting) u.orderAttackMove(ax, az);
     }
