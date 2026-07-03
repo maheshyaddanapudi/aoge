@@ -201,11 +201,24 @@ export class HUD {
     }
 
     if (units.length) {
-      // attack-move for military selections
-      if (units.some(u => u.type !== 'villager')) {
+      // attack-move + stances for military selections
+      const mil = units.filter(u => u.type !== 'villager');
+      if (mil.length) {
         const am = this.button('\u2694\uFE0F', 'Atk-Move (A)', 'Attack-move: engage everything on the way<br>Press A then click a destination');
         am.onclick = () => this.input.armAttackMove();
         this.addCmd(am);
+        // stance radio: aggressive / defensive / hold
+        const stances = [
+          ['\u{1F620}', 'Aggro', 'aggressive', 'Chase anything that comes close'],
+          ['\u{1F6E1}', 'Defend', 'defensive', 'Fight back, then return to this position'],
+          ['\u270B', 'Hold', 'hold', 'Never move; only hit what is in weapon range'],
+        ];
+        for (const [icon, label, stance, tip] of stances) {
+          const sb = this.button(icon, label, tip);
+          sb.onclick = () => { for (const u of mil) { u.stance = stance; u.post = null; } this.game.sound('command'); };
+          this.dyn.push(() => sb.classList.toggle('stance-on', mil.every(u => u.stance === stance)));
+          this.addCmd(sb);
+        }
       }
       const stop = this.button('\u{1F6D1}', 'Stop (T)', 'Stop current order');
       stop.onclick = () => { for (const u of units) u.clearOrder(true); };

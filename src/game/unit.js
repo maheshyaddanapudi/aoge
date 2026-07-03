@@ -56,6 +56,8 @@ export class Unit {
     this.repathT = 0;
     this.carry = null;          // {res, amt}
     this.actionT = 0;           // generic action timer (gather tick / attack cd)
+    this.stance = 'aggressive'; // aggressive | defensive | hold (military)
+    this.post = null;           // defensive stance: where to return after a fight
     this.scanT = Math.random() * 0.5;
     this.animT = Math.random() * 10;
     this.moving = false;
@@ -306,11 +308,18 @@ export class Unit {
       this.scanT -= dt;
       if (this.scanT <= 0) {
         this.scanT = 0.45;
-        const foe = this.game.nearestEnemy(this.owner, this.x, this.z, this.def.aggro, true);
-        if (foe) this.engage(foe, true);
+        // hold ground: only fight what's already in weapon range
+        const radius = this.stance === 'hold' ? this.attackRangeMax() : this.def.aggro;
+        const foe = this.game.nearestEnemy(this.owner, this.x, this.z, radius, true);
+        if (foe) {
+          if (this.stance !== 'aggressive' && !this.post) this.post = { x: this.x, z: this.z };
+          this.engage(foe, true);
+        }
       }
     }
   }
+
+  attackRangeMax() { return Math.max(this.def.range, 1.6); }
 
   engage(target, keepOrder = false) {
     const prevOrder = keepOrder ? this.order : null;
@@ -342,10 +351,15 @@ export class Unit {
         this.orderAttack(resume.target); return;
       }
     }
-    // chain to nearby enemy if any
-    if (this.def.aggro > 0) {
+    // chain to nearby enemy if any (hold stance stays put; defensive returns to post)
+    if (this.def.aggro > 0 && this.stance === 'aggressive') {
       const foe = this.game.nearestEnemy(this.owner, this.x, this.z, this.def.aggro + 2, true);
       if (foe) { this.engage(foe); return; }
+    }
+    if (this.stance === 'defensive' && this.post) {
+      const p = this.post; this.post = null;
+      this.orderMove(p.x, p.z);
+      return;
     }
     this.clearOrder();
   }
@@ -554,6 +568,14 @@ export class Unit {
     if (!t || t.dead) { this.resumeOrAcquire(); return; }
     const range = this.attackRange(t);
     const d = this.distTo(t);
+    // stances: hold never chases; defensive breaks off when pulled too far from post
+    if (this.stance === 'hold' && d > range) { this.clearOrder(); return; }
+    if (this.stance === 'defensive' && this.post &&
+        Math.hypot(this.x - this.post.x, this.z - this.post.z) > 16) {
+      const p = this.post; this.post = null;
+      this.orderMove(p.x, p.z);
+      return;
+    }
     // Enter fighting only when inside range AND outside min range — otherwise
     // keep walking (this is what lets a catapult actually complete its
     // back-away path instead of ping-ponging between states).
@@ -734,6 +756,12 @@ export class Unit {
     g.position.z = this.z;
     g.position.y = this.game.map.heightAt(this.x, this.z);
     g.rotation.y = this.facing;
+    // hit pulse
+    if (this.hitT > 0) {
+      this.hitT -= dt;
+      const k = Math.max(0, this.hitT) / 0.16;
+      g.scale.setScalar(1 + 0.16 * k);
+    } else if (g.scale.x !== 1) g.scale.setScalar(1);
 
     if (this.attackAnimT > 0) this.attackAnimT -= dt;
     if (this.throwAnimT > 0) this.throwAnimT -= dt;

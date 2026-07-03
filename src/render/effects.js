@@ -54,8 +54,30 @@ export class HealthBar {
 const arrowGeo = new THREE.BoxGeometry(0.05, 0.05, 0.85);
 const stoneGeo = new THREE.IcosahedronGeometry(0.3, 0);
 const puffGeo = new THREE.IcosahedronGeometry(0.22, 0);
+const rubbleGeo = new THREE.BoxGeometry(1, 0.7, 1);
+const rubbleMat = new THREE.MeshLambertMaterial({ color: 0x8b8577 });
 const _aim = new THREE.Vector3();
 const _dir = new THREE.Vector3();
+
+// floating damage-number textures, cached per value
+const dmgTexCache = new Map();
+function dmgTexture(val) {
+  let t = dmgTexCache.get(val);
+  if (t) return t;
+  const c = document.createElement('canvas');
+  c.width = 96; c.height = 48;
+  const ctx = c.getContext('2d');
+  ctx.font = 'bold 30px Trebuchet MS, sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.lineWidth = 5;
+  ctx.strokeText(String(val), 48, 24);
+  ctx.fillStyle = '#ffd24a';
+  ctx.fillText(String(val), 48, 24);
+  t = new THREE.CanvasTexture(c);
+  if (dmgTexCache.size > 120) dmgTexCache.clear();
+  dmgTexCache.set(val, t);
+  return t;
+}
 
 export class Effects {
   constructor(scene, game) {
@@ -147,6 +169,35 @@ export class Effects {
 
   blood(pos) { this.puff(pos, 0x8a1f12, 4, 3); }
 
+  // Floating damage number (capped so huge battles don't drown in text).
+  damageNumber(x, y, z, val) {
+    if (val < 1 || this.dmgNums?.length > 36) return;
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: dmgTexture(Math.round(val)), depthTest: false, transparent: true }));
+    s.scale.set(1.7, 0.85, 1);
+    s.position.set(x + (Math.random() - 0.5) * 0.6, y, z);
+    s.renderOrder = 6;
+    this.scene.add(s);
+    (this.dmgNums = this.dmgNums || []).push({ s, t: 0 });
+  }
+
+  // Collapsed-building rubble: a scatter of gray blocks that lingers, then fades.
+  spawnRubble(cx, gy, cz, size) {
+    const g = new THREE.Group();
+    const n = 3 + size * 2;
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(rubbleGeo, rubbleMat);
+      const s = 0.3 + Math.random() * 0.5 * size;
+      m.scale.set(s, s * 0.5, s);
+      m.position.set((Math.random() - 0.5) * size * 1.6, s * 0.2, (Math.random() - 0.5) * size * 1.6);
+      m.rotation.y = Math.random() * Math.PI;
+      m.castShadow = true;
+      g.add(m);
+    }
+    g.position.set(cx, gy, cz);
+    this.scene.add(g);
+    (this.rubble = this.rubble || []).push({ g, t: 0 });
+  }
+
   // Sink-and-remove animation for dead units / razed buildings.
   // Pass a mixer to keep a death animation playing during the fade.
   fadeOut(object3d, dur = 1.6, sink = 1.2, mixer = null) {
@@ -228,6 +279,32 @@ export class Effects {
       pt.mesh.material.opacity = 0.9 * (1 - pt.t / pt.life);
       const s = 1 + pt.t * 1.5;
       pt.mesh.scale.setScalar(s);
+    }
+    // floating damage numbers
+    if (this.dmgNums) {
+      for (let i = this.dmgNums.length - 1; i >= 0; i--) {
+        const d = this.dmgNums[i];
+        d.t += dt;
+        if (d.t > 1.1) {
+          this.scene.remove(d.s);
+          d.s.material.dispose();
+          this.dmgNums.splice(i, 1);
+          continue;
+        }
+        d.s.position.y += dt * 1.6;
+        d.s.material.opacity = 1 - Math.max(0, d.t - 0.5) / 0.6;
+      }
+    }
+    // rubble piles linger ~22s, then sink away
+    if (this.rubble) {
+      for (let i = this.rubble.length - 1; i >= 0; i--) {
+        const r = this.rubble[i];
+        r.t += dt;
+        if (r.t > 22) {
+          r.g.position.y -= dt * 0.5;
+          if (r.t > 26) { this.scene.remove(r.g); this.rubble.splice(i, 1); }
+        }
+      }
     }
     // fades
     for (let i = this.fades.length - 1; i >= 0; i--) {

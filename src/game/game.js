@@ -187,6 +187,12 @@ export class Game {
   applyDamage(target, dmg, attacker) {
     if (!target || target.dead || this.gameOver) return;
     target.hp -= dmg;
+    // combat feedback: floating number + a brief scale pulse on units
+    if (dmg >= 1) {
+      const y = target.isBuilding ? target.groundY + target.size * 1.4 : target.group.position.y + 2.2;
+      this.effects.damageNumber(target.isBuilding ? target.cx : target.x, y, target.isBuilding ? target.cz : target.z, dmg);
+      if (target.isUnit) target.hitT = 0.16;
+    }
     if (target.owner === PLAYER || attacker?.owner === PLAYER) this.onCombat();
 
     // alert + retaliation
@@ -298,6 +304,7 @@ export class Game {
     if (b.researching) this.players[b.owner].ageResearchInProgress = false;
     this.effects.puff(new THREE.Vector3(b.cx, b.groundY + 1.5, b.cz), 0x8a7a60, 16, 7);
     this.effects.fadeOut(b.group, 2.2, b.size * 1.2);
+    this.effects.spawnRubble(b.cx, b.groundY, b.cz, b.size);
     this.sound('collapse');
     if (!silent && b.owner === PLAYER) this.onAlert(`Your ${b.def.name} has been destroyed!`);
     if (this.ai) this.ai.onBuildingLost(b);

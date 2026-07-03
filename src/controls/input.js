@@ -301,6 +301,11 @@ export class InputController {
   onMouseDown(e) {
     if (e.button === 0) {
       if (this.placing) {
+        if (this.placing.def.isWall) {
+          // walls place in drag-lines: anchor here, stretch, release to build
+          this.placing.lineStart = { gx: this.placing.gx, gy: this.placing.gy };
+          return;
+        }
         this.tryPlace(e.shiftKey);
         return;
       }
@@ -369,7 +374,20 @@ export class InputController {
   }
 
   onMouseMove(e) {
-    if (this.placing) this.updateGhost(e.clientX, e.clientY);
+    if (this.placing) {
+      this.updateGhost(e.clientX, e.clientY);
+      if (this.placing.lineStart) this.updateWallLine();
+    }
+    // hover cursor: point at an enemy with soldiers selected -> pointer
+    this.hoverT = this.hoverT || 0;
+    const now = performance.now();
+    if (!this.placing && !this.attackMoveArmed && now - this.hoverT > 130) {
+      this.hoverT = now;
+      if (this.selectedUnits().some(u => u.type !== 'villager')) {
+        const h = this.pick(e.clientX, e.clientY);
+        this.canvas.style.cursor = (h?.entity && h.entity.owner !== PLAYER) ? 'pointer' : 'default';
+      } else if (this.canvas.style.cursor === 'pointer') this.canvas.style.cursor = 'default';
+    }
     if (this.dragStart) {
       const dx = e.clientX - this.dragStart.x, dy = e.clientY - this.dragStart.y;
       if (!this.dragging && Math.hypot(dx, dy) > 6) this.dragging = true;
@@ -384,7 +402,74 @@ export class InputController {
     }
   }
 
+  // ---- wall drag-lines ---------------------------------------------------------
+  wallLineTiles() {
+    const p = this.placing;
+    if (!p?.lineStart) return [];
+    const tiles = [];
+    let { gx: x0, gy: y0 } = p.lineStart;
+    const x1 = p.gx, y1 = p.gy;
+    const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy, x = x0, y = y0;
+    for (let i = 0; i < 40; i++) {
+      tiles.push([x, y]);
+      if (x === x1 && y === y1) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x += sx; }
+      if (e2 < dx) { err += dx; y += sy; }
+    }
+    return tiles;
+  }
+
+  updateWallLine() {
+    if (!this.linePreview) {
+      this.linePreview = [];
+      const geo = new THREE.PlaneGeometry(1.8, 1.8);
+      geo.rotateX(-Math.PI / 2);
+      for (let i = 0; i < 40; i++) {
+        const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0x4dff5e, transparent: true, opacity: 0.45, depthWrite: false }));
+        m.visible = false;
+        m.renderOrder = 3;
+        this.game.scene.add(m);
+        this.linePreview.push(m);
+      }
+    }
+    const tiles = this.wallLineTiles();
+    for (let i = 0; i < this.linePreview.length; i++) {
+      const m = this.linePreview[i];
+      if (i < tiles.length) {
+        const [gx, gy] = tiles[i];
+        const [wx, wz] = this.game.map.gridToWorld(gx, gy);
+        m.visible = true;
+        m.position.set(wx, this.game.map.heightAt(wx, wz) + 0.1, wz);
+        m.material.color.setHex(this.game.canPlaceBuilding(gx, gy, 1) ? 0x4dff5e : 0xff4030);
+      } else m.visible = false;
+    }
+  }
+
+  hideWallLine() {
+    if (this.linePreview) for (const m of this.linePreview) m.visible = false;
+  }
+
   onMouseUp(e) {
+    // finish a wall drag-line: build every valid, affordable segment
+    if (e.button === 0 && this.placing?.lineStart) {
+      const tiles = this.wallLineTiles();
+      const type = this.placing.type;
+      const placed = [];
+      for (const [gx, gy] of tiles) {
+        const b = this.game.placeBuilding(PLAYER, type, gx, gy);
+        if (b) placed.push(b);
+      }
+      const vills = this.selectedUnits().filter(u => u.type === 'villager');
+      vills.forEach((v, i) => { if (placed.length) v.orderBuild(placed[i % placed.length]); });
+      if (placed.length) this.sound('place'); else this.sound('error');
+      this.placing.lineStart = null;
+      this.hideWallLine();
+      if (!e.shiftKey) this.cancelPlacement();
+      return;
+    }
     if (e.button !== 0 || !this.dragStart) return;
     const start = this.dragStart;
     this.dragStart = null;
@@ -609,6 +694,7 @@ export class InputController {
     if (!this.placing) return;
     this.game.scene.remove(this.placing.ghost);
     this.placing = null;
+    this.hideWallLine();
   }
 
   // ---- keyboard ----------------------------------------------------------------------------
