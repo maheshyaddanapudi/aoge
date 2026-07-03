@@ -111,6 +111,17 @@ export class Game {
     return u;
   }
 
+  // Footprint is buildable: terrain/occupancy clear AND no unit standing on it
+  // (placing over units would seal them inside the building forever).
+  canPlaceBuilding(gx, gy, size) {
+    if (!this.map.canPlace(gx, gy, size)) return false;
+    const x0 = gx * TILE, z0 = gy * TILE, x1 = (gx + size) * TILE, z1 = (gy + size) * TILE;
+    for (const u of this.units) {
+      if (!u.dead && u.x > x0 - 0.4 && u.x < x1 + 0.4 && u.z > z0 - 0.4 && u.z < z1 + 0.4) return false;
+    }
+    return true;
+  }
+
   // Attempts to pay for and place a construction site. Returns Building or null.
   placeBuilding(owner, type, gx, gy, prebuilt = false) {
     const def = BUILDINGS[type];
@@ -119,7 +130,7 @@ export class Game {
     if (!prebuilt) {
       if (p.age < def.age) return null;
       if (!canAfford(p.res, def.cost)) return null;
-      if (!this.map.canPlace(gx, gy, def.size)) return null;
+      if (!this.canPlaceBuilding(gx, gy, def.size)) return null;
       payCost(p.res, def.cost);
     }
     const b = new Building(this, type, owner, gx, gy, prebuilt);
@@ -183,9 +194,19 @@ export class Game {
     if (target.isUnit && attacker && !attacker.dead) {
       const passive = target.state === 'idle' || target.state === 'gathering' ||
                       target.state === 'toResource' || target.state === 'deposit' ||
-                      target.state === 'move';
-      if (passive && attacker.isUnit) {
-        if (target.type !== 'villager' || attacker.def.range <= 1.5) target.engage(attacker, true);
+                      target.state === 'move' || target.state === 'building' ||
+                      target.state === 'toBuild';
+      if (passive) {
+        if (target.type !== 'villager') {
+          // military responds to any attacker, including towers
+          target.engage(attacker, true);
+        } else if (attacker.isUnit && attacker.def.range <= 1.5) {
+          // villagers fight back against melee...
+          target.engage(attacker, true);
+        } else {
+          // ...and run home from archers, catapults and towers
+          this.fleeHome(target);
+        }
       }
     }
     if (this.ai) this.ai.onDamage(target, attacker);
@@ -194,6 +215,14 @@ export class Game {
       if (target.isUnit) this.killUnit(target);
       else this.razeBuilding(target);
     }
+  }
+
+  // Send a villager running to the nearest friendly drop-off building.
+  fleeHome(u) {
+    if (u.fleeCd && this.time < u.fleeCd) return;
+    u.fleeCd = this.time + 6;
+    const home = this.findDropoff(u.owner, u.x, u.z);
+    if (home) u.orderMove(home.cx, home.cz);
   }
 
   splashDamage(pos, radius, dmg, attacker) {
@@ -233,12 +262,11 @@ export class Game {
     this.checkWinLose();
   }
 
-  razeBuilding(b) {
+  razeBuilding(b, silent = false) {
     if (b.dead) return;
     b.dead = true;
     b.setSelected(false);
     b.healthBar.set(0, false);
-    // refund nothing; release the footprint
     this.map.release(b.gx, b.gy, b.size);
     this.buildings.splice(this.buildings.indexOf(b), 1);
     this.recalcPop(b.owner);
@@ -246,9 +274,25 @@ export class Game {
     this.effects.puff(new THREE.Vector3(b.cx, b.groundY + 1.5, b.cz), 0x8a7a60, 16, 7);
     this.effects.fadeOut(b.group, 2.2, b.size * 1.2);
     this.sound('collapse');
-    if (b.owner === PLAYER) this.onAlert(`Your ${b.def.name} has been destroyed!`);
+    if (!silent && b.owner === PLAYER) this.onAlert(`Your ${b.def.name} has been destroyed!`);
     if (this.ai) this.ai.onBuildingLost(b);
     this.checkWinLose();
+  }
+
+  // Owner-initiated demolish: full refund while under construction (cancel),
+  // nothing once complete (AoE behavior). Queued units always refund.
+  deleteBuilding(b) {
+    if (!b || b.dead) return;
+    const res = this.players[b.owner].res;
+    for (const ut of b.trainQueue) refundCost(res, UNITS[ut].cost);
+    b.trainQueue.length = 0;
+    if (b.researching) {
+      refundCost(res, AGES[b.researching.age - 1].cost);
+      b.researching = null;
+      this.players[b.owner].ageResearchInProgress = false;
+    }
+    if (!b.complete) refundCost(res, b.def.cost);
+    this.razeBuilding(b, true);
   }
 
   depleteNode(node) {

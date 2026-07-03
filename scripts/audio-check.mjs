@@ -7,7 +7,7 @@ const errors = [];
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 await page.goto('http://localhost:4179/aoge/', { waitUntil: 'networkidle' });
-await page.click('#start-btn');
+await page.click('#start-normal');
 await page.waitForTimeout(6000); // let several music bars schedule
 
 const audio = await page.evaluate(async () => {

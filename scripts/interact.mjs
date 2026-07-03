@@ -10,7 +10,7 @@ const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 
 await page.goto('http://localhost:4174/aoge/', { waitUntil: 'networkidle' });
-await page.click('#start-btn');
+await page.click('#start-normal');
 await page.waitForTimeout(1200);
 
 const screenOf = (sel) => page.evaluate((sel) => {
@@ -47,7 +47,7 @@ const spotPos = await page.evaluate(() => {
       const ang = (a / 24) * Math.PI * 2;
       const gx = Math.round(tc.gx + 2 + Math.cos(ang) * r) - 1;
       const gy = Math.round(tc.gy + 2 + Math.sin(ang) * r) - 1;
-      if (g.map.canPlace(gx - 1, gy - 1, 4)) {
+      if (g.canPlaceBuilding(gx - 1, gy - 1, 4)) {
         const v = window.__rtsCam.target.clone();
         v.set((gx + 1) * 2, g.map.heightAt((gx + 1) * 2, (gy + 1) * 2), (gy + 1) * 2);
         v.project(window.__rtsCam.camera);

@@ -162,6 +162,7 @@ export class Unit {
     if (!target || target.dead) return;
     this.order = { kind: 'attack', target };
     this.state = 'toAttack';
+    this.stuckN = 0;
     const p = target.isBuilding ? { x: target.cx, z: target.cz } : { x: target.x, z: target.z };
     this.requestPath(p.x, p.z);
   }
@@ -179,7 +180,7 @@ export class Unit {
     const map = this.game.map;
     const [sx, sy] = map.worldToGrid(this.x, this.z);
     const [tx, ty] = map.worldToGrid(wx, wz);
-    const tiles = findPath(map, sx, sy, tx, ty);
+    const tiles = findPath(map, sx, sy, tx, ty, 9000, this.owner);
     this.pathGoal = [tx, ty];
     this.repathT = 0.8 + Math.random() * 0.4;
     if (!tiles || tiles.length === 0) {
@@ -258,11 +259,24 @@ export class Unit {
   resumeOrAcquire() {
     const resume = this.order?.resume;
     if (resume) {
-      this.order = resume;
+      // restore whatever the unit was doing before it was interrupted
       if (resume.kind === 'move' || resume.kind === 'attackmove') {
+        this.order = resume;
         this.state = 'move';
         this.requestPath(resume.x, resume.z);
         return;
+      }
+      if (resume.kind === 'gather' && resume.node && !resume.node.dead && resume.node.amount > 0) {
+        this.orderGather(resume.node); return;
+      }
+      if (resume.kind === 'farm' && resume.farm && !resume.farm.dead && resume.farm.complete) {
+        this.orderGatherFarm(resume.farm); return;
+      }
+      if (resume.kind === 'build' && resume.building && !resume.building.dead && !resume.building.complete) {
+        this.orderBuild(resume.building); return;
+      }
+      if (resume.kind === 'attack' && resume.target && !resume.target.dead) {
+        this.orderAttack(resume.target); return;
       }
     }
     // chain to nearby enemy if any
@@ -464,8 +478,13 @@ export class Unit {
     const t = this.order?.target;
     if (!t || t.dead) { this.resumeOrAcquire(); return; }
     const range = this.attackRange(t);
-    if (this.distTo(t) <= range) {
+    const d = this.distTo(t);
+    // Enter fighting only when inside range AND outside min range — otherwise
+    // keep walking (this is what lets a catapult actually complete its
+    // back-away path instead of ping-ponging between states).
+    if (d <= range && (!this.def.minRange || d >= this.def.minRange)) {
       this.state = 'fighting';
+      this.stuckN = 0;
       return;
     }
     this.repathT -= dt;
@@ -473,7 +492,26 @@ export class Unit {
       this.requestPath(t.x, t.z);
     }
     if (this.followPath(dt)) {
-      if (this.distTo(t) > range) this.requestPath(t.isBuilding ? t.cx : t.x, t.isBuilding ? t.cz : t.z);
+      if (this.def.minRange && d < this.def.minRange) {
+        // still crowded — try another retreat direction
+        const away = Math.atan2(this.z - (t.isBuilding ? t.cz : t.z), this.x - (t.isBuilding ? t.cx : t.x)) + (Math.random() - 0.5);
+        this.requestPath(this.x + Math.cos(away) * 6, this.z + Math.sin(away) * 6);
+        return;
+      }
+      if (this.distTo(t) > range) {
+        // Arrived at end of path but can't reach the target (usually walled
+        // off). After a few failed approaches, attack whatever enemy building
+        // is blocking the way (walls included) instead of idling forever.
+        this.stuckN = (this.stuckN || 0) + 1;
+        if (this.stuckN >= 3) {
+          this.stuckN = 0;
+          const blocker = this.game.nearestEnemy(this.owner, this.x, this.z, 12, true);
+          if (blocker && blocker !== t) { this.orderAttack(blocker); return; }
+          this.resumeOrAcquire();
+          return;
+        }
+        this.requestPath(t.isBuilding ? t.cx : t.x, t.isBuilding ? t.cz : t.z);
+      }
     }
   }
 
@@ -551,15 +589,15 @@ export class Unit {
     const map = this.game.map;
     let nx = this.x + dx, nz = this.z + dz;
     const [gx, gy] = map.worldToGrid(nx, nz);
-    if (map.isWalkable(gx, gy)) {
+    if (map.isWalkableFor(gx, gy, this.owner)) {
       this.x = nx; this.z = nz;
       return true;
     }
     // slide along axes
     const [gx2, gy2] = map.worldToGrid(this.x + dx, this.z);
-    if (map.isWalkable(gx2, gy2)) { this.x += dx; return true; }
+    if (map.isWalkableFor(gx2, gy2, this.owner)) { this.x += dx; return true; }
     const [gx3, gy3] = map.worldToGrid(this.x, this.z + dz);
-    if (map.isWalkable(gx3, gy3)) { this.z += dz; return true; }
+    if (map.isWalkableFor(gx3, gy3, this.owner)) { this.z += dz; return true; }
     return false;
   }
 

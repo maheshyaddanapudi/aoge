@@ -36,7 +36,8 @@ export class Building {
     this.scanT = Math.random() * 0.4;
     this.atkTarget = null;
 
-    game.map.occupy(gx, gy, this.size, this);
+    // gates block enemies but stay passable for the owner's units
+    game.map.occupy(gx, gy, this.size, this, this.def.isGate ? owner : -1);
 
     // average ground height over footprint for a stable base
     let hSum = 0;

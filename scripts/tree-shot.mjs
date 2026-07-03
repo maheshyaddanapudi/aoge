@@ -7,7 +7,7 @@ const errors = [];
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 await page.goto('http://localhost:4185/aoge/', { waitUntil: 'networkidle' });
-await page.click('#start-btn');
+await page.click('#start-normal');
 await page.waitForTimeout(2500);
 // find a forest cluster and aim the camera at it
 const where = await page.evaluate(() => {

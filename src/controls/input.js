@@ -163,21 +163,53 @@ export class InputController {
     return new THREE.Vector3().copy(ray.direction).multiplyScalar(t).add(ray.origin);
   }
 
-  // A tap is select-or-command, depending on what's under it and the selection.
+  // A tap is select-or-command depending on the selection. With units
+  // selected, COMMAND intent wins (attack the enemy, work the farm, resume
+  // the construction site, deposit at the TC) — selection switching only
+  // happens when nothing commandable is under the tap.
   handleTap(x, y) {
-    const hit = this.pick(x, y);
-    // 1) tapping (or near) your own unit selects it
-    const ownNear = this.unitNearScreen(x, y, 34, PLAYER);
-    const ownUnit = (hit?.entity?.isUnit && hit.entity.owner === PLAYER) ? hit.entity : ownNear;
-    if (ownUnit) { this.select([ownUnit]); this.selectFeedback([ownUnit]); return; }
-    // 2) tapping your own building selects it
-    if (hit?.entity?.isBuilding && hit.entity.owner === PLAYER) {
-      this.select([hit.entity]); this.selectFeedback([hit.entity]); return;
+    const hit = this.pick(x, y) || {};
+    const ent = hit.entity || null;
+    const ownSel = this.selection.filter(e => !e.dead && e.owner === PLAYER);
+    const selUnits = ownSel.filter(e => e.isUnit);
+    const selBuildings = ownSel.filter(e => e.isBuilding);
+
+    if (selUnits.length) {
+      // enemy (picked or nearby) -> attack
+      const enemy = (ent && ent.owner !== PLAYER) ? ent : this.unitNearScreen(x, y, 34, 1 - PLAYER);
+      if (enemy) return this.dispatchContext({ entity: enemy });
+      // resource node -> gather
+      if (hit.node) return this.dispatchContext(hit);
+      // own building: command when it means something, otherwise switch selection
+      if (ent?.isBuilding && ent.owner === PLAYER) {
+        const carrying = selUnits.some(u => u.type === 'villager' && u.carry?.amt > 0);
+        if (!ent.complete || ent.def.isFarm || (ent.def.dropoff && carrying)) {
+          return this.dispatchContext({ entity: ent });
+        }
+        this.select([ent]); this.selectFeedback([ent]); return;
+      }
+      // own unit -> switch selection
+      const ownU = (ent?.isUnit && ent.owner === PLAYER) ? ent : this.unitNearScreen(x, y, 30, PLAYER);
+      if (ownU) { this.select([ownU]); this.selectFeedback([ownU]); return; }
+      // ground -> move
+      if (hit.point) return this.dispatchContext(hit);
+      this.select([]);
+      return;
     }
-    // 3) with a selection, the tap issues a command (move/gather/attack/rally)
-    if (this.selection.some(e => !e.dead && e.owner === PLAYER)) { this.issueContextCommand(x, y); return; }
-    // 4) otherwise inspect an enemy entity, or clear
-    if (hit?.entity) { this.select([hit.entity]); this.onSelectionChange(this.selection); return; }
+
+    if (selBuildings.length) {
+      // taps on ground/nodes set the rally; own entities switch selection
+      if (ent && ent.owner === PLAYER) { this.select([ent]); this.selectFeedback([ent]); return; }
+      if (hit.node || hit.point) return this.dispatchContext(hit);
+      if (ent) { this.select([ent]); this.onSelectionChange(this.selection); return; }
+      this.select([]);
+      return;
+    }
+
+    // nothing selected: tap selects
+    const own = (ent && ent.owner === PLAYER) ? ent : this.unitNearScreen(x, y, 34, PLAYER);
+    if (own) { this.select([own]); this.selectFeedback([own]); return; }
+    if (ent) { this.select([ent]); this.onSelectionChange(this.selection); return; }
     this.select([]);
   }
 
@@ -373,17 +405,22 @@ export class InputController {
   // ---- commands ----------------------------------------------------------------------
 
   issueContextCommand(cx, cy) {
-    const sel = this.selection.filter(e => !e.dead && e.owner === PLAYER);
-    if (!sel.length) return;
     let hit = this.pick(cx, cy);
     if (!hit) hit = {};
-    // forgiveness: right-clicking near a unit targets it (attack/follow), as
-    // long as we didn't directly hit another entity or a resource node
+    // forgiveness: right-clicking near an ENEMY unit targets it — never snap
+    // to own units, which would silently turn formation moves into follows
     if (!hit.entity && !hit.node) {
-      const nearU = this.unitNearScreen(cx, cy, 22);
-      if (nearU) hit = { entity: nearU };
+      const nearFoe = this.unitNearScreen(cx, cy, 22, 1 - PLAYER);
+      if (nearFoe) hit = { entity: nearFoe };
     }
-    if (!hit.entity && !hit.node && !hit.point) return;
+    this.dispatchContext(hit);
+  }
+
+  // Execute a contextual command against a resolved target for the current selection.
+  dispatchContext(hit) {
+    const sel = this.selection.filter(e => !e.dead && e.owner === PLAYER);
+    if (!sel.length) return;
+    if (!hit || (!hit.entity && !hit.node && !hit.point)) return;
 
     const units = sel.filter(e => e.isUnit);
     const buildingsSel = sel.filter(e => e.isBuilding);
@@ -479,7 +516,7 @@ export class InputController {
     const wz = (gy + p.def.size / 2) * TILE;
     p.ghost.visible = true;
     p.ghost.position.set(wx, map.heightAt(wx, wz), wz);
-    p.valid = map.canPlace(gx, gy, p.def.size);
+    p.valid = this.game.canPlaceBuilding(gx, gy, p.def.size);
     p.ghostMat.color.setHex(p.valid ? 0x4dff5e : 0xff4030);
   }
 

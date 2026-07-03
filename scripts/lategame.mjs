@@ -8,7 +8,7 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 await page.goto('http://localhost:4177/aoge/', { waitUntil: 'networkidle' });
-await page.click('#start-btn');
+await page.click('#start-normal');
 await page.waitForTimeout(800);
 const out = await page.evaluate(() => {
   const g = window.__game;

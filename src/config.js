@@ -98,6 +98,11 @@ export const BUILDINGS = {
     cost: { wood: 8 }, buildTime: 4,
     hp: 320, size: 1, isWall: true,
   },
+  gate: {
+    name: 'Gate', icon: '\u{1F6AA}', age: 2,
+    cost: { wood: 20 }, buildTime: 6,
+    hp: 400, size: 1, isWall: true, isGate: true,
+  },
   stable: {
     name: 'Stable', icon: '\u{1F40E}', age: 3,
     cost: { wood: 160 }, buildTime: 20,
@@ -113,8 +118,8 @@ export const BUILDINGS = {
 // Build menu order for the villager command card.
 export const BUILD_MENU = [
   'house', 'storehouse', 'farm', 'barracks',
-  'archeryrange', 'tower', 'wall', 'stable',
-  'siegeworkshop', 'towncenter',
+  'archeryrange', 'tower', 'wall', 'gate',
+  'stable', 'siegeworkshop', 'towncenter',
 ];
 
 export const RESOURCE_NODES = {

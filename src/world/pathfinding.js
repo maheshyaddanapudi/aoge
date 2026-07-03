@@ -46,16 +46,18 @@ const DIRS = [
  * nearest reachable tile around it. Returns array of [gx, gy] (excluding start),
  * or null if nothing reachable.
  */
-export function findPath(map, sx, sy, tx, ty, maxIter = 9000) {
+export function findPath(map, sx, sy, tx, ty, maxIter = 9000, owner = -1) {
   const size = map.size;
+  // per-owner passability: open ground, or the owner's own gate tiles
+  const open = (i) => map.walk[i] === 1 || (owner >= 0 && map.gateOwner[i] === owner);
   if (!map.inBounds(sx, sy)) return null;
-  if (!map.isWalkable(sx, sy)) {
+  if (!open(sy * size + sx)) {
     const fix = map.nearestWalkable(sx, sy, 4);
     if (!fix) return null;
     [sx, sy] = fix;
   }
   let goalBlocked = false;
-  if (!map.isWalkable(tx, ty)) {
+  if (!map.inBounds(tx, ty) || !open(ty * size + tx)) {
     goalBlocked = true;
     const fix = map.nearestWalkable(tx, ty, 12);
     if (!fix) return null;
@@ -89,10 +91,10 @@ export function findPath(map, sx, sy, tx, ty, maxIter = 9000) {
       const nx = cur.x + dx, ny = cur.y + dy;
       if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
       const ni = ny * size + nx;
-      if (closed[ni] || map.walk[ni] !== 1) continue;
+      if (closed[ni] || !open(ni)) continue;
       // No cutting corners diagonally past blocked tiles.
       if (dx !== 0 && dy !== 0) {
-        if (map.walk[cur.y * size + nx] !== 1 || map.walk[ny * size + cur.x] !== 1) continue;
+        if (!open(cur.y * size + nx) || !open(ny * size + cur.x)) continue;
       }
       const ng = g[cur.i] + cost;
       if (ng < g[ni]) {
@@ -112,29 +114,30 @@ export function findPath(map, sx, sy, tx, ty, maxIter = 9000) {
     i = parent[i];
   }
   path.reverse();
-  return smoothPath(map, sx, sy, path);
+  return smoothPath(map, sx, sy, path, owner);
 }
 
 // Bresenham walkability check between tile centers.
-export function lineWalkable(map, x0, y0, x1, y1) {
+export function lineWalkable(map, x0, y0, x1, y1, owner = -1) {
+  const ok = (x, y) => owner >= 0 ? map.isWalkableFor(x, y, owner) : map.isWalkable(x, y);
   let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
   const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
   let err = dx - dy;
   let x = x0, y = y0;
   for (;;) {
-    if (!map.isWalkable(x, y)) return false;
+    if (!ok(x, y)) return false;
     if (x === x1 && y === y1) return true;
     const e2 = 2 * err;
     if (e2 > -dy) {
       // moving diagonally? ensure both adjacent orthogonal tiles are open
-      if (e2 < dx && !(map.isWalkable(x + sx, y) && map.isWalkable(x, y + sy))) return false;
+      if (e2 < dx && !(ok(x + sx, y) && ok(x, y + sy))) return false;
       err -= dy; x += sx;
     }
     if (e2 < dx) { err += dx; y += sy; }
   }
 }
 
-function smoothPath(map, sx, sy, path) {
+function smoothPath(map, sx, sy, path, owner = -1) {
   if (path.length < 3) return path;
   const out = [];
   let ax = sx, ay = sy;
@@ -144,7 +147,7 @@ function smoothPath(map, sx, sy, path) {
     let j = i;
     for (let k = path.length - 1; k > i; k--) {
       if (k - i > 40) continue; // cap LOS scan length
-      if (lineWalkable(map, ax, ay, path[k][0], path[k][1])) { j = k; break; }
+      if (lineWalkable(map, ax, ay, path[k][0], path[k][1], owner)) { j = k; break; }
     }
     out.push(path[j]);
     [ax, ay] = path[j];

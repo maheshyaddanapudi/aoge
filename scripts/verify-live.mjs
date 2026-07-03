@@ -8,7 +8,7 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + 
 
 await page.goto('https://maheshyaddanapudi.github.io/aoge/', { waitUntil: 'networkidle', timeout: 60000 });
 await page.waitForSelector('#start-btn', { timeout: 20000 });
-await page.click('#start-btn');
+await page.click('#start-normal');
 await page.waitForTimeout(2000);
 
 const state = await page.evaluate(() => {

@@ -6,7 +6,7 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 const errors = [];
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 await page.goto('http://localhost:4184/aoge/', { waitUntil: 'networkidle' });
-await page.click('#start-btn');
+await page.click('#start-normal');
 await page.waitForTimeout(2500);
 await page.evaluate(() => {
   const g = window.__game;

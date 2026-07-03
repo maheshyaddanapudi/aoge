@@ -6,7 +6,7 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 await page.goto('http://localhost:4181/aoge/', { waitUntil: 'networkidle' });
-await page.click('#start-btn');
+await page.click('#start-normal');
 await page.waitForTimeout(800);
 // spawn a big battle for worst-case load
 await page.evaluate(() => {

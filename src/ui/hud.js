@@ -20,7 +20,8 @@ export class HUD {
     this.game = game;
     this.input = input;
     this.selection = [];
-    this.refreshT = 0;
+    this.dyn = [];
+    this.structKey = null;
 
     this.el = {
       wood: document.getElementById('res-wood'),
@@ -65,7 +66,23 @@ export class HUD {
 
   setSelection(sel) {
     this.selection = sel;
+    this.structKey = null; // force a rebuild on next update
     this.renderSelection();
+  }
+
+  // Structure changes rebuild the panel; everything else (HP, progress,
+  // affordability) is patched in place so buttons keep their DOM nodes and
+  // clicks are never swallowed by a rebuild.
+  computeStructKey() {
+    const sel = this.selection.filter(e => !e.dead);
+    const p = this.game.players[PLAYER];
+    let key = sel.map(e => e.id).join(',') + '|' + p.age;
+    const first = sel[0];
+    if (sel.length === 1 && first?.isBuilding) {
+      key += '|' + (first.complete ? 'c' : 'u') + '|' + first.trainQueue.join(',') +
+             '|' + (first.researching ? 'R' : '') + '|' + (p.ageResearchInProgress ? 'A' : '');
+    }
+    return key;
   }
 
   update(dt) {
@@ -76,10 +93,12 @@ export class HUD {
     this.el.pop.textContent = `${p.popUsed}/${p.popCap}`;
     this.el.age.textContent = AGES[p.age - 1].name + (p.ageResearchInProgress ? ' ⏳' : '');
 
-    this.refreshT -= dt;
-    if (this.refreshT <= 0) {
-      this.refreshT = 0.3;
+    const key = this.computeStructKey();
+    if (key !== this.structKey) {
+      this.structKey = key;
       this.renderSelection();
+    } else {
+      for (const fn of this.dyn) fn();
     }
   }
 
@@ -89,6 +108,7 @@ export class HUD {
     selCards.innerHTML = '';
     queueRow.innerHTML = '';
     cmdPanel.innerHTML = '';
+    this.dyn = [];
 
     if (!sel.length) {
       selTitle.textContent = 'No selection';
@@ -100,21 +120,29 @@ export class HUD {
     if (sel.length === 1) {
       const def = first.def;
       selTitle.textContent = def.name + (first.owner !== PLAYER ? ' (enemy)' : '');
-      let sub = `HP ${Math.ceil(first.hp)}/${first.maxHp}`;
-      if (first.isBuilding && !first.complete) sub += ` — under construction ${Math.floor(first.progress * 100)}%`;
-      if (first.isUnit && first.carry?.amt > 0) sub += ` — carrying ${Math.floor(first.carry.amt)} ${first.carry.res}`;
-      if (first.isUnit && def.atk) sub += ` — ATK ${def.atk}`;
-      selSub.textContent = sub;
+      const subText = () => {
+        let sub = `HP ${Math.ceil(first.hp)}/${first.maxHp}`;
+        if (first.isBuilding && !first.complete) sub += ` — under construction ${Math.floor(first.progress * 100)}%`;
+        if (first.isUnit && first.carry?.amt > 0) sub += ` — carrying ${Math.floor(first.carry.amt)} ${first.carry.res}`;
+        if (first.isUnit && def.atk) sub += ` — ATK ${def.atk}`;
+        return sub;
+      };
+      selSub.textContent = subText();
+      this.dyn.push(() => { selSub.textContent = subText(); });
     } else {
       selTitle.textContent = `${sel.length} units selected`;
       selSub.textContent = '';
     }
 
-    // unit cards
+    // unit cards (HP bars patch live)
     for (const e of sel.slice(0, 21)) {
       const card = document.createElement('div');
       card.className = 'sel-card';
-      card.innerHTML = `<span>${e.def.icon}</span><div class="hpbar"><div style="width:${Math.max(3, (e.hp / e.maxHp) * 100)}%"></div></div>`;
+      card.innerHTML = `<span>${e.def.icon}</span><div class="hpbar"><div></div></div>`;
+      const bar = card.querySelector('.hpbar > div');
+      const patch = () => { bar.style.width = Math.max(3, (e.hp / e.maxHp) * 100) + '%'; };
+      patch();
+      this.dyn.push(patch);
       card.onclick = () => this.input.select([e]);
       selCards.appendChild(card);
     }
@@ -129,10 +157,13 @@ export class HUD {
     if (hasVillager) {
       for (const type of BUILD_MENU) {
         const def = BUILDINGS[type];
-        const locked = p.age < def.age;
-        const afford = canAfford(p.res, def.cost);
-        const btn = this.button(def.icon, def.name, `${def.name}<br>${costHtml(def.cost)}${locked ? `<br>Requires ${AGES[def.age - 1].name}` : ''}`, locked || !afford);
-        if (!locked && afford) btn.onclick = () => this.input.startPlacement(type);
+        const locked = () => p.age < def.age;
+        const usable = () => !locked() && canAfford(p.res, def.cost);
+        const btn = this.button(def.icon, def.name,
+          `${def.name}<br>${costHtml(def.cost)}${p.age < def.age ? `<br>Requires ${AGES[def.age - 1].name}` : ''}`,
+          !usable(), costHtml(def.cost));
+        btn.onclick = () => { if (usable()) this.input.startPlacement(type); else this.game.sound('error'); };
+        this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
         cmdPanel.appendChild(btn);
       }
     }
@@ -143,46 +174,63 @@ export class HUD {
       cmdPanel.appendChild(stop);
     }
 
-    if (sel.length === 1 && first.isBuilding && first.complete) {
+    if (sel.length === 1 && first.isBuilding) {
       const b = first;
-      if (b.def.trains) {
+      if (b.complete && b.def.trains) {
         for (const ut of b.def.trains) {
           const udef = UNITS[ut];
-          const locked = p.age < udef.age;
-          const afford = canAfford(p.res, udef.cost);
+          const usable = () => p.age >= udef.age && canAfford(p.res, udef.cost);
           const btn = this.button(udef.icon, udef.name,
-            `Train ${udef.name}<br>${costHtml(udef.cost)}<br>HP ${udef.hp} · ATK ${udef.atk}${locked ? `<br>Requires ${AGES[udef.age - 1].name}` : ''}`,
-            locked || !afford);
-          if (!locked) btn.onclick = () => { if (!b.queueTrain(ut)) this.game.sound('error'); else this.game.sound('command'); this.renderSelection(); };
+            `Train ${udef.name}<br>${costHtml(udef.cost)}<br>HP ${udef.hp} · ATK ${udef.atk}${p.age < udef.age ? `<br>Requires ${AGES[udef.age - 1].name}` : ''}`,
+            !usable(), costHtml(udef.cost));
+          btn.onclick = () => {
+            if (p.age < udef.age) { this.game.sound('error'); return; }
+            if (!b.queueTrain(ut)) this.game.sound('error'); else this.game.sound('command');
+          };
+          this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
           cmdPanel.appendChild(btn);
         }
       }
-      if (b.def.researchesAge && p.age < AGES.length) {
+      if (b.complete && b.def.researchesAge && p.age < AGES.length) {
         const next = AGES[p.age];
-        const busy = p.ageResearchInProgress;
-        const afford = canAfford(p.res, next.cost);
-        const btn = this.button('\u{1F3F0}', `Advance`, `Advance to ${next.name}<br>${costHtml(next.cost)}<br>${next.time}s`, busy || !afford);
-        if (!busy && afford) btn.onclick = () => { if (b.startAgeResearch()) { this.game.sound('command'); this.renderSelection(); } };
+        const usable = () => !p.ageResearchInProgress && canAfford(p.res, next.cost);
+        const btn = this.button('\u{1F3F0}', `Advance`, `Advance to ${next.name}<br>${costHtml(next.cost)}<br>${next.time}s`, !usable(), costHtml(next.cost));
+        btn.onclick = () => { if (usable() && b.startAgeResearch()) this.game.sound('command'); else this.game.sound('error'); };
+        this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
         cmdPanel.appendChild(btn);
       }
-      // production queue
+      // demolish: full refund while under construction, none once complete
+      const del = this.button('\u{1F5D1}', b.complete ? 'Demolish' : 'Cancel',
+        b.complete ? `Demolish this ${b.def.name} (no refund)` : `Cancel construction<br>full refund`);
+      del.onclick = () => { game.deleteBuilding(b); this.input.select([]); };
+      cmdPanel.appendChild(del);
+
+      // production queue (progress widths patch live; cancel is identity-checked)
       if (b.researching) {
         const q = document.createElement('div');
         q.className = 'q-item';
-        const pct = (b.researching.t / b.researching.dur) * 100;
-        q.innerHTML = `<div class="prog" style="width:${pct}%"></div><span>\u{1F3F0}</span>`;
+        q.innerHTML = `<div class="prog"></div><span>\u{1F3F0}</span>`;
+        const prog = q.querySelector('.prog');
+        const patch = () => { if (b.researching) prog.style.width = (b.researching.t / b.researching.dur) * 100 + '%'; };
+        patch(); this.dyn.push(patch);
         queueRow.appendChild(q);
       }
       b.trainQueue.forEach((ut, i) => {
         const q = document.createElement('div');
         q.className = 'q-item';
         q.title = 'Click to cancel';
-        const pct = i === 0 ? (b.trainT / UNITS[ut].trainTime) * 100 : 0;
-        q.innerHTML = `<div class="prog" style="width:${pct}%"></div><span>${UNITS[ut].icon}</span>`;
-        q.onclick = () => { b.cancelTrain(i); this.renderSelection(); };
+        q.innerHTML = `<div class="prog"></div><span>${UNITS[ut].icon}</span>`;
+        const prog = q.querySelector('.prog');
+        const patch = () => { prog.style.width = (i === 0 && b.trainQueue[0] === ut ? (b.trainT / UNITS[ut].trainTime) * 100 : 0) + '%'; };
+        patch(); this.dyn.push(patch);
+        q.onclick = () => {
+          // the queue may have shifted since render — cancel by identity
+          const idx = b.trainQueue[i] === ut ? i : b.trainQueue.indexOf(ut);
+          if (idx >= 0) b.cancelTrain(idx);
+        };
         queueRow.appendChild(q);
       });
-      if (b.def.trains) {
+      if (b.complete && b.def.trains) {
         const hint = document.createElement('span');
         hint.style.cssText = 'font-size:11px;color:#9c8f6e;margin-left:4px';
         hint.textContent = b.trainQueue.length ? '' : 'Right-click ground/resource to set rally';
@@ -191,10 +239,12 @@ export class HUD {
     }
   }
 
-  button(icon, label, tooltip, disabled = false) {
+  button(icon, label, tooltip, disabled = false, cost = '') {
     const btn = document.createElement('button');
     btn.className = 'cmd-btn' + (disabled ? ' disabled' : '');
-    btn.innerHTML = `<span>${icon}</span><span class="lbl">${label}</span><div class="tooltip">${tooltip}</div>`;
+    btn.innerHTML = `<span>${icon}</span><span class="lbl">${label}</span>` +
+      (cost ? `<span class="cost">${cost}</span>` : '') +
+      `<div class="tooltip">${tooltip}</div>`;
     return btn;
   }
 }

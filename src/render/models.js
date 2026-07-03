@@ -611,6 +611,26 @@ export function makeWall() {
   return g;
 }
 
+export function makeGate() {
+  const g = new THREE.Group();
+  // two heavy posts with a crossbeam — an open archway units can walk through
+  for (const x of [-0.85, 0.85]) {
+    const post = cyl(0.22, 0.26, 2.6, C.woodDark, 6);
+    post.position.set(x, 1.3, 0);
+    g.add(post);
+    const tip = cone(0.22, 0.3, C.wood, 6);
+    tip.position.set(x, 2.75, 0);
+    g.add(tip);
+  }
+  const beam = box(2.3, 0.28, 0.34, C.plank);
+  beam.position.y = 2.45;
+  g.add(beam);
+  const brace = box(1.9, 0.14, 0.12, C.wood);
+  brace.position.set(0, 2.05, 0.12);
+  g.add(brace);
+  return g;
+}
+
 export function makeStable(teamColor) {
   const g = new THREE.Group();
   const body = box(5.2, 2.0, 3.6, 0xc4a878);
@@ -687,6 +707,7 @@ const RAW_BUILDING_FACTORY = {
   archeryrange: makeArcheryRange,
   tower: makeTower,
   wall: () => makeWall(),
+  gate: () => makeGate(),
   stable: makeStable,
   siegeworkshop: makeSiegeWorkshop,
 };

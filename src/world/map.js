@@ -37,8 +37,10 @@ export class GameMap {
     this.moistNoise = makeNoise(seed ^ 0x51f15eed);
 
     // walk: 1 = walkable. occupant: entity occupying a tile (building/resource), or null.
+    // gateOwner: player id whose units may pass this tile even though walk=0 (gates).
     this.walk = new Uint8Array(this.size * this.size);
     this.occupant = new Array(this.size * this.size).fill(null);
+    this.gateOwner = new Int8Array(this.size * this.size).fill(-1);
 
     for (let gy = 0; gy < this.size; gy++) {
       for (let gx = 0; gx < this.size; gx++) {
@@ -105,11 +107,12 @@ export class GameMap {
     return true;
   }
 
-  occupy(gx, gy, size, entity) {
+  occupy(gx, gy, size, entity, gateFor = -1) {
     for (let y = gy; y < gy + size; y++) {
       for (let x = gx; x < gx + size; x++) {
         const i = y * this.size + x;
         this.walk[i] = 0;
+        this.gateOwner[i] = gateFor;
         this.occupant[i] = entity;
       }
     }
@@ -122,10 +125,18 @@ export class GameMap {
         const i = y * this.size + x;
         const h = this.tileHeight(x, y);
         this.walk[i] = h > WATER_LEVEL ? 1 : 0;
+        this.gateOwner[i] = -1;
         this.occupant[i] = null;
       }
     }
     this.version++;
+  }
+
+  // Walkable for a specific player: open ground, or their own gate tiles.
+  isWalkableFor(gx, gy, owner) {
+    if (!this.inBounds(gx, gy)) return false;
+    const i = gy * this.size + gx;
+    return this.walk[i] === 1 || this.gateOwner[i] === owner;
   }
 
   // Nearest walkable tile to a target tile (spiral search). Returns [gx, gy] or null.
