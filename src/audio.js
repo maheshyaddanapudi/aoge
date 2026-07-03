@@ -6,12 +6,19 @@ let muted = false;
 const lastPlayed = new Map();
 
 export function initAudio() {
-  if (ctx) return;
+  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
   try {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain();
     master.gain.value = 0.22;
     master.connect(ctx.destination);
+    if (ctx.state === 'suspended') ctx.resume();
+    // iOS suspends the context on interruptions/tab switches and it never
+    // recovers on its own — resume on any interaction or return to the tab.
+    const revive = () => { if (ctx && ctx.state === 'suspended') ctx.resume(); };
+    document.addEventListener('pointerdown', revive);
+    document.addEventListener('touchend', revive);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) revive(); });
   } catch { /* audio unavailable */ }
 }
 

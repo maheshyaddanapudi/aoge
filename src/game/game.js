@@ -102,7 +102,11 @@ export class Game {
     if (r) {
       if (r.node && !r.node.dead && r.node.amount > 0 && unitType === 'villager') u.orderGather(r.node);
       else if (r.farm && !r.farm.dead && unitType === 'villager') u.orderGatherFarm(r.farm);
-      else if (r.x !== undefined) {
+      else if ((r.node || r.farm) && unitType !== 'villager') {
+        // military rallied onto a resource/farm just attack-moves there
+        const px = r.node ? r.node.wx : r.farm.cx, pz = r.node ? r.node.wz : r.farm.cz;
+        u.orderAttackMove(px, pz);
+      } else if (r.x !== undefined) {
         if (unitType !== 'villager') u.orderAttackMove(r.x, r.z);
         else u.orderMove(r.x, r.z);
       }
@@ -239,7 +243,7 @@ export class Game {
       const dz = Math.max(Math.abs(pos.z - b.cz) - half, 0);
       if (Math.hypot(dx, dz) <= radius) {
         const mult = attacker?.def?.bonusVsBuilding && attacker.owner !== b.owner ? attacker.def.bonusVsBuilding : 1;
-        this.applyDamage(b, Math.round(dmg * mult * 0.8), attacker);
+        this.applyDamage(b, Math.round(dmg * mult), attacker);
       }
     }
   }
@@ -267,6 +271,11 @@ export class Game {
     b.dead = true;
     b.setSelected(false);
     b.healthBar.set(0, false);
+    // refund what was only queued/in-research — that work never happened
+    const res = this.players[b.owner].res;
+    for (const ut of b.trainQueue) refundCost(res, UNITS[ut].cost);
+    b.trainQueue.length = 0;
+    if (b.researching) refundCost(res, AGES[b.researching.age - 1].cost);
     this.map.release(b.gx, b.gy, b.size);
     this.buildings.splice(this.buildings.indexOf(b), 1);
     this.recalcPop(b.owner);
@@ -280,18 +289,10 @@ export class Game {
   }
 
   // Owner-initiated demolish: full refund while under construction (cancel),
-  // nothing once complete (AoE behavior). Queued units always refund.
+  // nothing once complete (AoE behavior). razeBuilding refunds queue/research.
   deleteBuilding(b) {
     if (!b || b.dead) return;
-    const res = this.players[b.owner].res;
-    for (const ut of b.trainQueue) refundCost(res, UNITS[ut].cost);
-    b.trainQueue.length = 0;
-    if (b.researching) {
-      refundCost(res, AGES[b.researching.age - 1].cost);
-      b.researching = null;
-      this.players[b.owner].ageResearchInProgress = false;
-    }
-    if (!b.complete) refundCost(res, b.def.cost);
+    if (!b.complete) refundCost(this.players[b.owner].res, b.def.cost);
     this.razeBuilding(b, true);
   }
 
@@ -421,6 +422,8 @@ export class Game {
       return;
     }
     this.time += dt;
+    // deaths before t=5 are ignored by checkWinLose; re-evaluate once after
+    if (!this._wlChecked && this.time >= 5) { this._wlChecked = true; this.checkWinLose(); }
     this.rebuildHash();
     for (const u of [...this.units]) u.update(dt);
     for (const b of [...this.buildings]) b.update(dt);
@@ -428,14 +431,20 @@ export class Game {
     this.effects.update(dt);
   }
 
+  // A side is defeated only when it has no buildings AND no villagers left to
+  // rebuild — losing your last building while villagers survive is a setback,
+  // not a loss, and a standing army can still fight for the win.
+  sideDefeated(owner) {
+    if (this.countBuildings(owner) > 0) return false;
+    return !this.units.some(u => u.owner === owner && !u.dead && u.type === 'villager');
+  }
+
   checkWinLose() {
     if (this.gameOver || this.time < 5) return;
-    const playerAlive = this.countBuildings(PLAYER) > 0;
-    const enemyAlive = this.countBuildings(ENEMY) > 0;
-    if (!enemyAlive) {
+    if (this.sideDefeated(ENEMY)) {
       this.gameOver = true;
       this.onGameOver(true);
-    } else if (!playerAlive) {
+    } else if (this.sideDefeated(PLAYER)) {
       this.gameOver = true;
       this.onGameOver(false);
     }

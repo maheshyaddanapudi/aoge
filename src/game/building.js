@@ -119,10 +119,14 @@ export class Building {
     this.selRing.visible = sel;
   }
 
-  // Villagers call this every frame they're actively constructing.
+  // Villagers call this every frame they're actively constructing. Extra
+  // builders help with diminishing returns (total speed ~ n^0.7), so a mob
+  // of 20 villagers can't insta-build forward towers.
   constructionTick(dt) {
     if (this.complete || this.dead) return;
-    const rate = dt / this.def.buildTime;
+    this.buildersNow = (this.buildersNow || 0) + 1;
+    const n = Math.max(1, this.builderCount || 1);
+    const rate = (dt / this.def.buildTime) * (Math.pow(n, 0.7) / n);
     this.progress = Math.min(1, this.progress + rate);
     this.hp = Math.min(this.maxHp, this.hp + rate * this.maxHp * 0.92);
     this.modelGroup.scale.y = 0.1 + this.progress * 0.9;
@@ -131,7 +135,8 @@ export class Building {
 
   finishConstruction() {
     this.complete = true;
-    this.hp = Math.max(this.hp, this.maxHp * 0.95);
+    // keep accumulated HP — damage dealt during construction stays dealt
+    this.hp = Math.min(this.maxHp, this.hp);
     this.modelGroup.scale.y = 1;
     if (this.scaffold) {
       this.group.remove(this.scaffold);
@@ -145,7 +150,7 @@ export class Building {
   canTrain(unitType) {
     const u = UNITS[unitType];
     const p = this.game.players[this.owner];
-    return this.complete && u && p.age >= u.age;
+    return this.complete && u && p.age >= u.age && !!this.def.trains?.includes(unitType);
   }
 
   queueTrain(unitType) {
@@ -169,6 +174,7 @@ export class Building {
 
   startAgeResearch() {
     const p = this.game.players[this.owner];
+    if (!this.complete || !this.def.researchesAge) return false;
     if (this.researching || p.ageResearchInProgress) return false;
     if (p.age >= AGES.length) return false;
     const next = AGES[p.age]; // p.age is 1-based; AGES[p.age] is the next one
@@ -181,6 +187,10 @@ export class Building {
 
   update(dt) {
     if (this.dead) return;
+
+    // roll over the per-tick builder count used for diminishing returns
+    this.builderCount = this.buildersNow || 0;
+    this.buildersNow = 0;
 
     // training
     if (this.complete && this.trainQueue.length > 0) {

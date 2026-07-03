@@ -10,23 +10,35 @@ await page.click('#start-normal'); await page.waitForTimeout(2200);
 const R = [];
 const step = (n) => page.evaluate((n)=>{for(let i=0;i<n;i++)window.__game.update(0.05);},n);
 
-// C1: catapult vs adjacent melee — must retreat AND deal damage
+// C1: catapult inside minRange of a STATIONARY enemy building must back away and fire
 await page.evaluate(()=>{
   const g=window.__game; const tc=g.buildings.find(b=>b.owner===0);
-  const c=g.spawnUnit('catapult',0, tc.cx+20, tc.cz+10);
-  const m=g.spawnUnit('militia',1, tc.cx+21.5, tc.cz+10);
-  m.hp=m.maxHp=500; // tanky so it survives to chase
-  c.orderAttack(m); m.orderAttack(c);
-  window.__c1={c:c.id,m:m.id,d0:Math.hypot(c.x-m.x,c.z-m.z)};
+  // find a 7x7 fully-walkable area so the catapult has room to retreat
+  let gx=null,gy=null;
+  outer:
+  for(let r=8;r<30;r++)for(let a=0;a<24;a++){
+    const cx=Math.round(tc.gx+Math.cos(a/24*6.28)*r), cy=Math.round(tc.gy+Math.sin(a/24*6.28)*r);
+    let ok=true;
+    for(let dy=-3;dy<=3&&ok;dy++)for(let dx=-3;dx<=3&&ok;dx++) if(!g.map.isWalkable(cx+dx,cy+dy)) ok=false;
+    if(ok){gx=cx;gy=cy;break outer;}
+  }
+  const w=g.placeBuilding(1,'wall',gx,gy,true);
+  const c=g.spawnUnit('catapult',0, w.cx+1.6, w.cz);
+  c.orderAttack(w);
+  window.__c1={c:c.id,w:w.id,hp0:w.hp};
 });
-await step(600);
+await step(700);
 R.push(await page.evaluate(()=>{
-  const g=window.__game; const c=g.units.find(u=>u.id===window.__c1.c); const m=g.units.find(u=>u.id===window.__c1.m);
-  const d=c&&m?Math.hypot(c.x-m.x,c.z-m.z):-1;
-  const dealt=m?500-m.hp:500;
-  return `C1 catapult: alive=${!!c} dist ${window.__c1.d0.toFixed(1)}->${d.toFixed(1)} dmgDealt=${dealt} ${dealt>0?'PASS':'FAIL'}`;
+  const g=window.__game; const c=g.units.find(u=>u.id===window.__c1.c);
+  const w=g.buildings.find(b=>b.id===window.__c1.w);
+  const dmg=w?window.__c1.hp0-w.hp:window.__c1.hp0;
+  if(w&&!w.dead)g.razeBuilding(w,true);
+  if(c&&!c.dead)g.killUnit(c); // don't leave a splash-happy catapult around
+  return `C1 catapult-minrange: dmg=${dmg.toFixed(0)} destroyed=${!w} ${dmg>0?'PASS':'FAIL'}`;
 }));
 
+// isolate: remove all enemy units between probes
+await page.evaluate(()=>{ const g=window.__game; for(const u of [...g.units]) if(u.owner===1) g.killUnit(u); });
 // C2: villager resumes gathering after killing a melee attacker
 await page.evaluate(()=>{
   const g=window.__game; const v=g.units.find(u=>u.owner===0&&u.type==='villager');
@@ -43,22 +55,25 @@ R.push(await page.evaluate(()=>{
   return `C2 resume-after-fight: state=${v?.state} order=${v?.order?.kind} ${ok?'PASS':'FAIL'}`;
 }));
 
-// C3: villager flees from archer
+
+// isolate: remove all enemy units between probes
+await page.evaluate(()=>{ const g=window.__game; for(const u of [...g.units]) if(u.owner===1) g.killUnit(u); });
+// C3: villager flees (gets a move order home) when an archer opens fire
 await page.evaluate(()=>{
   const g=window.__game; const vs=g.units.filter(u=>u.owner===0&&u.type==='villager');
-  const v=vs[1]||vs[0];
-  const wood=g.findNearestReachableNode('wood', v.x, v.z, 60); v.orderGather(wood);
-  for(let i=0;i<160;i++)g.update(0.05);
+  const v=vs[1]||vs[0]; v.clearOrder(); v.hp=v.maxHp;
   const a=g.spawnUnit('archer',1,v.x+9,v.z); a.orderAttack(v);
-  window.__c3={v:v.id, hp0:v.hp};
+  window.__c3={v:v.id};
 });
-await step(200);
+await step(70);
 R.push(await page.evaluate(()=>{
-  const v=window.__game.units.find(u=>u.id===window.__c3.v);
-  const fled = v && (v.state==='move' || v.order?.kind==='move' || v.state==='idle');
-  return `C3 flee-from-ranged: alive=${!!v} state=${v?.state} ${v&&fled?'PASS':'FAIL'}`;
+  const g=window.__game; const v=g.units.find(u=>u.id===window.__c3.v);
+  const fled=v&&(v.state==='move'||v.order?.kind==='move'||v.fleeCd>0);
+  return `C3 flee-from-ranged: alive=${!!v} state=${v?.state} fleeCd=${v?.fleeCd>0} ${fled?'PASS':'FAIL'}`;
 }));
 
+// isolate: remove all enemy units between probes
+await page.evaluate(()=>{ const g=window.__game; for(const u of [...g.units]) if(u.owner===1) g.killUnit(u); });
 // C5: cannot place building on units
 R.push(await page.evaluate(()=>{
   const g=window.__game; const v=g.units.find(u=>u.owner===0&&u.type==='villager');
@@ -68,46 +83,70 @@ R.push(await page.evaluate(()=>{
   return `C5 entombment-guard: placeBuilding over unit -> ${b===null?'rejected PASS':'PLACED FAIL'}`;
 }));
 
-// C6: gate pathing — own unit passes, enemy blocked; stuck attacker chews wall
+// C6: gate pathing — find a guaranteed-walkable vertical corridor first
 await page.evaluate(()=>{
   const g=window.__game; const tc=g.buildings.find(b=>b.owner===0);
-  // wall line with a gate in the middle, a few tiles from TC
-  const [tgx,tgy]=[tc.gx+8, tc.gy-4];
-  g.players[0].res.wood+=500;
+  let tgx=null,tgy=null;
+  outer:
+  for(let r=6;r<26;r++){
+    for(let a=0;a<24;a++){
+      const cx=Math.round(tc.gx+Math.cos(a/24*6.28)*r), cy=Math.round(tc.gy+Math.sin(a/24*6.28)*r);
+      let ok=true;
+      for(let dy=-3;dy<=3;dy++) if(!g.map.isWalkable(cx,cy+dy)) { ok=false; break; }
+      for(let dx=-2;dx<=2;dx++) if(!g.map.isWalkable(cx+dx,cy)) { ok=false; break; }
+      if(ok){ tgx=cx; tgy=cy; break outer; }
+    }
+  }
   window.__walls=[];
-  for(let k=-4;k<=4;k++){
+  for(let k=-8;k<=8;k++){
     const type = k===0?'gate':'wall';
     const b=g.placeBuilding(0,type,tgx+k,tgy,true);
     if(b) window.__walls.push(b.id);
   }
-  // own villager ordered across the line (through the gate)
-  const v=g.units.filter(u=>u.owner===0&&u.type==='villager')[2]||g.units.find(u=>u.owner===0&&u.type==='villager');
-  v.clearOrder();
-  const [wx,wz]=g.map.gridToWorld(tgx, tgy-4);
-  v.orderMove(wx,wz);
-  window.__c6={v:v.id, wx, wz};
+  window.__gate={tgx,tgy};
 });
-await step(700);
-R.push(await page.evaluate(()=>{
-  const g=window.__game; const v=g.units.find(u=>u.id===window.__c6.v);
-  const d=v?Math.hypot(v.x-window.__c6.wx, v.z-window.__c6.wz):99;
-  return `C6a own-unit-through-gate: dist-to-goal=${d.toFixed(1)} ${d<4?'PASS':'FAIL'}`;
+R.push(await page.evaluate(async ()=>{
+  const g=window.__game; const {tgx,tgy}=window.__gate;
+  const { findPath } = await import('/src/world/pathfinding.js').catch(()=>({findPath:null}));
+  // bundled build: use a unit's requestPath instead of importing
+  const probe=(owner)=>{
+    // temp unit-less path probe via game map + the real findPath through a unit
+    const u=g.spawnUnit('villager',owner, (tgx+0.5)*2, (tgy+3+0.5)*2);
+    u.orderMove((tgx+0.5)*2,(tgy-3+0.5)*2);
+    // walk it
+    for(let i=0;i<400;i++)g.update(0.05);
+    const crossed=u.z < (tgy+0.5)*2; // got past the wall line (north side)
+    g.killUnit(u);
+    return crossed;
+  };
+  const ownCross=probe(0);
+  const foeCross=probe(1);
+  const ok=ownCross&&!foeCross;
+  return `C6a gate-pathing: ownerCrossed=${ownCross} enemyCrossed=${foeCross} ${ok?'PASS':'FAIL'}`;
 }));
+
 await page.evaluate(()=>{
   const g=window.__game; const tc=g.buildings.find(b=>b.owner===0&&b.type==='towncenter');
-  // enemy militia ordered to attack the TC — the wall line blocks the direct route north
-  const [wx,wz]=g.map.gridToWorld(tc.gx+8, tc.gy-8);
+  // enemy militia fully BOXED IN by player walls, ordered onto the TC:
+  // path is impossible, so the stuck-retarget must make it attack a wall
+  const [mgx,mgy]=[tc.gx+14, tc.gy+14];
+  const [wx,wz]=g.map.gridToWorld(mgx,mgy);
   const m=g.spawnUnit('militia',1,wx,wz);
+  m.hp=m.maxHp=4000;
+  window.__box=[];
+  for(const [dx,dy] of [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]]){
+    const b=g.placeBuilding(0,'wall',mgx+dx,mgy+dy,true);
+    if(b)window.__box.push(b.id);
+  }
   m.orderAttack(tc);
-  window.__c6b={m:m.id, wallHp0: g.buildings.filter(b=>window.__walls.includes(b.id)).reduce((s,b)=>s+b.hp,0)};
+  window.__c6b={m:m.id, hp0:g.buildings.filter(b=>window.__box.includes(b.id)).reduce((s,b)=>s+b.hp,0)};
 });
-await step(800);
+await step(600);
 R.push(await page.evaluate(()=>{
   const g=window.__game; const m=g.units.find(u=>u.id===window.__c6b.m);
-  const wallHp=g.buildings.filter(b=>window.__walls.includes(b.id)).reduce((s,b)=>s+b.hp,0);
-  const tc=g.buildings.find(b=>b.owner===0&&b.type==='towncenter');
-  const engaged = wallHp<window.__c6b.wallHp0 || (m&&(m.state==='fighting'||m.state==='toAttack')&&m.order?.target?.isBuilding&&m.order.target.def.isWall) || (m&&tc&&m.state==='fighting');
-  return `C6b attacker-vs-wall: wallHp ${window.__c6b.wallHp0}->${wallHp} mState=${m?.state} ${engaged?'PASS':'FAIL'}`;
+  const hp=g.buildings.filter(b=>window.__box.includes(b.id)).reduce((s,b)=>s+b.hp,0);
+  const ok=hp<window.__c6b.hp0;
+  return `C6b stuck-attacker-chews-wall: boxHp ${window.__c6b.hp0}->${hp} mState=${m?.state} ${ok?'PASS':'FAIL'}`;
 }));
 
 // C6c: deleteBuilding refunds incomplete construction

@@ -54,15 +54,29 @@ export function createScene(canvas) {
 
   const sunDir = new THREE.Vector3(-0.55, 1.0, 0.35).normalize();
 
-  // Keep the shadow camera centered on the view target so shadows stay crisp.
-  function updateSun(focus) {
+  // Keep the shadow camera centered on the view target, scaling its box with
+  // camera distance so the whole visible ground stays shadowed at max zoom.
+  let lastSH = 0;
+  function updateSun(focus, camDist = 50) {
     sun.target.position.copy(focus);
     sun.position.copy(focus).addScaledVector(sunDir, 110);
+    const sh = Math.min(150, 30 + camDist * 1.15);
+    if (Math.abs(sh - lastSH) > 2) {
+      lastSH = sh;
+      sun.shadow.camera.left = -sh;
+      sun.shadow.camera.right = sh;
+      sun.shadow.camera.top = sh;
+      sun.shadow.camera.bottom = -sh;
+      sun.shadow.camera.updateProjectionMatrix();
+    }
   }
   updateSun(new THREE.Vector3(WORLD / 2, 0, WORLD / 2));
 
-  // Post-processing: multisampled render + subtle bloom.
-  const target = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, {
+  // Post-processing: multisampled render + subtle bloom. The custom target
+  // must be created at device resolution (composer.setSize handles this on
+  // resize, but not at construction).
+  const dpr = Math.min(window.devicePixelRatio, 2);
+  const target = new THREE.WebGLRenderTarget(window.innerWidth * dpr, window.innerHeight * dpr, {
     samples: 4,
     type: THREE.HalfFloatType,
   });

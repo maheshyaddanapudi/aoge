@@ -23,14 +23,21 @@ export class RTSCamera {
 
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return;
+      if (document.querySelector('.overlay:not(.hidden)')) return; // menus open
       this.keys.add(e.code);
     });
     window.addEventListener('keyup', (e) => this.keys.delete(e.code));
     window.addEventListener('blur', () => this.keys.clear());
+    this.pointerIn = false;
+    this.overUI = false;
     window.addEventListener('mousemove', (e) => {
       this.mouseX = e.clientX / window.innerWidth;
       this.mouseY = e.clientY / window.innerHeight;
+      this.pointerIn = true;
+      this.overUI = !(e.target && e.target.id === 'game-canvas');
     });
+    // stop edge-panning the moment the cursor leaves the window
+    document.documentElement.addEventListener('mouseleave', () => { this.pointerIn = false; });
   }
 
   jumpTo(x, z) {
@@ -60,8 +67,8 @@ export class RTSCamera {
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) dx -= 1;
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) dx += 1;
 
-    // edge pan
-    if (this.edgePanEnabled && document.hasFocus()) {
+    // edge pan (only while the pointer is inside the window and over the canvas)
+    if (this.edgePanEnabled && document.hasFocus() && this.pointerIn && !this.overUI) {
       const m = 0.008;
       if (this.mouseX < m) dx -= 1;
       if (this.mouseX > 1 - m) dx += 1;

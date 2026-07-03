@@ -129,7 +129,7 @@ function frame() {
   const dt = Math.min(clock.getDelta(), 0.05);
   if (running) for (let i = 0; i < gameSpeed; i++) game.update(dt);
   rtsCam.update(dt);
-  updateSun(rtsCam.smoothTarget);
+  updateSun(rtsCam.smoothTarget, rtsCam.smoothDist);
   hud.update(dt);
   minimap.update(dt);
   waterT += dt;
@@ -179,6 +179,7 @@ for (const b of document.querySelectorAll('.speed-btn')) {
 }
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT') return;
+  if (document.querySelector('.overlay:not(.hidden)')) return;
   if (e.code === 'BracketRight') setSpeed(gameSpeed + 1);
   else if (e.code === 'BracketLeft') setSpeed(gameSpeed - 1);
 });

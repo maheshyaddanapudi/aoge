@@ -141,11 +141,12 @@ export class Unit {
     }
     this.order = { kind: 'gather', node };
     this.state = 'toResource';
+    this.approachN = 0;
     this.requestPath(node.wx, node.wz);
   }
 
   orderGatherFarm(farm) {
-    if (this.type !== 'villager' || !farm || !farm.complete) return;
+    if (this.type !== 'villager' || !farm || !farm.complete || farm.owner !== this.owner) return;
     this.order = { kind: 'farm', farm };
     this.state = 'toResource';
     this.requestPath(farm.cx, farm.cz);
@@ -183,14 +184,19 @@ export class Unit {
     const tiles = findPath(map, sx, sy, tx, ty, 9000, this.owner);
     this.pathGoal = [tx, ty];
     this.repathT = 0.8 + Math.random() * 0.4;
+    this.progT = 0; this.progX = this.x; this.progZ = this.z;
     if (!tiles || tiles.length === 0) {
       this.path = null;
       // already adjacent / at goal — fine, handlers use range checks
       return;
     }
+    // Refine the final waypoint to the exact requested point ONLY when the
+    // path truly reaches the goal tile — a partial (closest-approach) path
+    // must keep its own endpoint or units jog in place against obstacles.
+    const end = tiles[tiles.length - 1];
+    const reachedGoal = end[0] === tx && end[1] === ty;
     this.path = tiles.map(([gx, gy]) => map.gridToWorld(gx, gy));
-    // Final exact point if walkable tile matches request
-    if (map.isWalkable(tx, ty)) {
+    if (reachedGoal && map.isWalkableFor(tx, ty, this.owner)) {
       const last = this.path[this.path.length - 1];
       last[0] = wx; last[1] = wz;
     }
@@ -327,18 +333,23 @@ export class Unit {
       }
     }
     if (this.followPath(dt)) {
-      // arrived but still not in range — try once more, then look elsewhere
-      const tx = o.kind === 'gather' ? o.node.wx : o.farm.cx;
-      const tz = o.kind === 'gather' ? o.node.wz : o.farm.cz;
-      if (this.repathT <= 0) {
+      // Arrived but out of range. Bounded retries (requestPath resets the
+      // repath timer, so a timer can't count attempts — an explicit counter
+      // can), then switch to a reachable alternative or give up.
+      this.approachN = (this.approachN || 0) + 1;
+      if (this.approachN > 3) {
+        this.approachN = 0;
         if (o.kind === 'gather') {
           const alt = this.game.findNearestReachableNode(o.node.res, this.x, this.z, 50, o.node);
-          if (alt) { this.orderGather(alt); return; }
+          if (alt && alt !== o.node) { this.orderGather(alt); return; }
         }
         this.clearOrder();
-      } else this.requestPath(tx, tz);
+        return;
+      }
+      const tx = o.kind === 'gather' ? o.node.wx : o.farm.cx;
+      const tz = o.kind === 'gather' ? o.node.wz : o.farm.cz;
+      this.requestPath(tx, tz);
     }
-    this.repathT -= dt;
   }
 
   updateGathering(dt) {
@@ -546,9 +557,8 @@ export class Unit {
     } else if (this.def.projectile === 'stone') {
       const from = this.pos3(); from.y += 1.6;
       const aim = t.isBuilding ? new THREE.Vector3(t.cx, t.groundY, t.cz) : t.pos3();
-      let dmg = atk;
-      if (t.isBuilding && this.def.bonusVsBuilding) dmg = Math.round(atk * this.def.bonusVsBuilding);
-      game.effects.fireStone(from, aim, dmg, this.def.splash || 0, this);
+      // base damage only — splashDamage applies bonusVsBuilding per building hit
+      game.effects.fireStone(from, aim, atk, this.def.splash || 0, this);
       game.sound('catapult');
       if (this.limbs.throwArm) this.throwAnimT = 0.5;
     } else {
@@ -582,6 +592,15 @@ export class Unit {
     this.facing = lerpAngle(this.facing, Math.atan2(nx, nz), Math.min(1, dt * 10));
     this.moving = true;
     this.applySeparation(dt, true);
+    // Watchdog: a unit that is "moving" but makes no net progress for 2s is
+    // physically jammed — treat the path as finished so the caller's arrival
+    // logic (retry / attack blocker / give up) runs instead of jogging forever.
+    this.progT = (this.progT || 0) + dt;
+    if (this.progT > 2) {
+      const moved = Math.hypot(this.x - (this.progX ?? this.x), this.z - (this.progZ ?? this.z));
+      this.progX = this.x; this.progZ = this.z; this.progT = 0;
+      if (moved < 0.3) { this.path = null; return true; }
+    }
     return false;
   }
 

@@ -529,7 +529,12 @@ export class InputController {
     for (const v of vills) v.orderBuild(b);
     this.sound('place');
     if (!keepPlacing) this.cancelPlacement();
-    else this.updateGhost(-1, -1);
+    else {
+      // hide the ghost and invalidate the spot until the next real pointer
+      // move — never re-derive placement from a synthetic corner ray
+      p.valid = false;
+      p.ghost.visible = false;
+    }
   }
 
   cancelPlacement() {
@@ -541,24 +546,31 @@ export class InputController {
   // ---- keyboard ----------------------------------------------------------------------------
 
   onKeyDown(e) {
+    if (document.querySelector('.overlay:not(.hidden)')) return; // menus open
     if (e.code === 'Escape') {
       if (this.placing) this.cancelPlacement();
       else this.select([]);
       return;
     }
-    // control groups
+    // control groups: Shift+digit assigns (Ctrl+digit is reserved by browsers
+    // for tab switching and cannot be suppressed), digit recalls, quick
+    // double-tap of the digit also jumps the camera to the group.
     if (e.code.startsWith('Digit')) {
       const d = e.code.slice(5);
       if (d === '0') return;
-      if (e.ctrlKey || e.metaKey) {
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
         e.preventDefault();
         this.groups.set(d, [...this.selection]);
+        this.sound('command');
       } else {
         const g = (this.groups.get(d) || []).filter(x => !x.dead);
         if (g.length) {
           this.select(g);
+          const now = performance.now();
+          const doubleTap = this.lastRecall?.d === d && now - this.lastRecall.t < 450;
+          this.lastRecall = { d, t: now };
           const f = g[0];
-          if (e.repeat) this.rtsCam.jumpTo(f.isBuilding ? f.cx : f.x, f.isBuilding ? f.cz : f.z);
+          if (doubleTap || e.repeat) this.rtsCam.jumpTo(f.isBuilding ? f.cx : f.x, f.isBuilding ? f.cz : f.z);
         }
       }
       return;
