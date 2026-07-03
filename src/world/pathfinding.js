@@ -36,6 +36,8 @@ class MinHeap {
   }
 }
 
+let scratch = null; // reusable A* buffers (see findPath)
+
 const DIRS = [
   [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
   [1, 1, 1.4142], [1, -1, 1.4142], [-1, 1, 1.4142], [-1, -1, 1.4142],
@@ -65,24 +67,41 @@ export function findPath(map, sx, sy, tx, ty, maxIter = 9000, owner = -1) {
   }
   if (sx === tx && sy === ty) return [];
 
-  const g = new Float32Array(size * size).fill(Infinity);
-  const parent = new Int32Array(size * size).fill(-1);
-  const closed = new Uint8Array(size * size);
+  // Reusable scratch buffers with a generation stamp — findPath runs many
+  // times per second and fresh 9k-cell typed arrays per call were multi-MB/s
+  // of garbage. A cell's g/parent/closed are valid only when gen matches.
+  if (!scratch || scratch.g.length !== size * size) {
+    scratch = {
+      g: new Float32Array(size * size),
+      parent: new Int32Array(size * size),
+      closed: new Int32Array(size * size),
+      genG: new Int32Array(size * size),
+      gen: 0,
+    };
+  }
+  scratch.gen++;
+  const S = scratch, GEN = S.gen;
+  const gGet = (i) => S.genG[i] === GEN ? S.g[i] : Infinity;
+  const gSet = (i, v) => { S.g[i] = v; S.genG[i] = GEN; };
+  const isClosed = (i) => S.closed[i] === GEN;
+  const close = (i) => { S.closed[i] = GEN; };
+  const parentGet = (i) => S.genG[i] === GEN ? S.parent[i] : -1;
   const heap = new MinHeap();
   const h = (x, y) => {
     const dx = Math.abs(x - tx), dy = Math.abs(y - ty);
     return Math.max(dx, dy) + 0.4142 * Math.min(dx, dy);
   };
   const si = sy * size + sx;
-  g[si] = 0;
+  gSet(si, 0);
+  S.parent[si] = -1;
   heap.push({ i: si, x: sx, y: sy, f: h(sx, sy) });
 
   let bestI = si, bestH = h(sx, sy);
   let iter = 0;
   while (heap.size && iter++ < maxIter) {
     const cur = heap.pop();
-    if (closed[cur.i]) continue;
-    closed[cur.i] = 1;
+    if (isClosed(cur.i)) continue;
+    close(cur.i);
     const hh = h(cur.x, cur.y);
     if (hh < bestH) { bestH = hh; bestI = cur.i; }
     if (cur.x === tx && cur.y === ty) { bestI = cur.i; break; }
@@ -91,15 +110,15 @@ export function findPath(map, sx, sy, tx, ty, maxIter = 9000, owner = -1) {
       const nx = cur.x + dx, ny = cur.y + dy;
       if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
       const ni = ny * size + nx;
-      if (closed[ni] || !open(ni)) continue;
+      if (isClosed(ni) || !open(ni)) continue;
       // No cutting corners diagonally past blocked tiles.
       if (dx !== 0 && dy !== 0) {
         if (!open(cur.y * size + nx) || !open(ny * size + cur.x)) continue;
       }
-      const ng = g[cur.i] + cost;
-      if (ng < g[ni]) {
-        g[ni] = ng;
-        parent[ni] = cur.i;
+      const ng = gGet(cur.i) + cost;
+      if (ng < gGet(ni)) {
+        gSet(ni, ng);
+        S.parent[ni] = cur.i;
         heap.push({ i: ni, x: nx, y: ny, f: ng + h(nx, ny) });
       }
     }
@@ -111,7 +130,7 @@ export function findPath(map, sx, sy, tx, ty, maxIter = 9000, owner = -1) {
   if (i === si && !(goalBlocked || bestH < h(sx, sy))) return null;
   while (i !== si && i >= 0) {
     path.push([i % size, (i / size) | 0]);
-    i = parent[i];
+    i = parentGet(i);
   }
   path.reverse();
   return smoothPath(map, sx, sy, path, owner);

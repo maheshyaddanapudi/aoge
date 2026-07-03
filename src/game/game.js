@@ -8,7 +8,7 @@ import {
 } from '../config.js';
 import { Unit } from './unit.js';
 import { Building } from './building.js';
-import { makeBerryBush, makeGoldMine, makeStump } from '../render/models.js';
+import { makeBerryBush, makeGoldMine, mat, C } from '../render/models.js';
 
 let NODE_ID = 1;
 
@@ -296,6 +296,27 @@ export class Game {
     this.razeBuilding(b, true);
   }
 
+  // All stumps live in one InstancedMesh (a per-stump Mesh each was a
+  // permanent extra draw call); oldest slots recycle after 400.
+  addStump(wx, wy, wz) {
+    if (!this.stumpMesh) {
+      const geo = new THREE.CylinderGeometry(0.22, 0.3, 0.4, 6);
+      geo.translate(0, 0.2, 0);
+      this.stumpMesh = new THREE.InstancedMesh(geo, mat(C.woodDark), 400);
+      this.stumpMesh.count = 0;
+      this.stumpMesh.frustumCulled = false;
+      this.stumpN = 0;
+      this.scene.add(this.stumpMesh);
+    }
+    const idx = this.stumpN % 400;
+    const m = new THREE.Matrix4().makeRotationY(Math.random() * 6.28);
+    m.setPosition(wx, wy, wz);
+    this.stumpMesh.setMatrixAt(idx, m);
+    this.stumpN++;
+    this.stumpMesh.count = Math.min(400, this.stumpN);
+    this.stumpMesh.instanceMatrix.needsUpdate = true;
+  }
+
   depleteNode(node) {
     if (node.dead) return;
     node.dead = true;
@@ -304,9 +325,8 @@ export class Game {
     this.nodes.splice(this.nodes.indexOf(node), 1);
     if (node.treeHandle !== undefined && node.treeHandle !== null) {
       this.trees.remove(node.treeHandle);
-      const stump = makeStump();
-      stump.position.set(node.wx, this.map.heightAt(node.wx, node.wz) - 0.05, node.wz);
-      this.scene.add(stump);
+      this.treeNodeByInstance.delete(node.treeHandle.idx);
+      this.addStump(node.wx, this.map.heightAt(node.wx, node.wz) - 0.05, node.wz);
       this.sound('treefall');
     } else if (node.mesh) {
       this.effects.fadeOut(node.mesh, 1.2, 0.8);
@@ -382,7 +402,8 @@ export class Game {
   hashKey(x, z) { return ((x / this.cell) | 0) * 4096 + ((z / this.cell) | 0); }
 
   rebuildHash() {
-    this.hash.clear();
+    // recycle cell arrays instead of reallocating the whole map every tick
+    for (const arr of this.hash.values()) arr.length = 0;
     for (const u of this.units) {
       const k = this.hashKey(u.x, u.z);
       let arr = this.hash.get(k);
@@ -425,8 +446,14 @@ export class Game {
     // deaths before t=5 are ignored by checkWinLose; re-evaluate once after
     if (!this._wlChecked && this.time >= 5) { this._wlChecked = true; this.checkWinLose(); }
     this.rebuildHash();
-    for (const u of [...this.units]) u.update(dt);
-    for (const b of [...this.buildings]) b.update(dt);
+    // retained scratch arrays: entities can be removed mid-iteration, but we
+    // don't need a fresh allocation every tick to guard against that
+    const us = this._uScratch || (this._uScratch = []);
+    us.length = 0; for (const u of this.units) us.push(u);
+    for (const u of us) if (!u.dead) u.update(dt);
+    const bs = this._bScratch || (this._bScratch = []);
+    bs.length = 0; for (const b of this.buildings) bs.push(b);
+    for (const b of bs) if (!b.dead) b.update(dt);
     if (this.ai) this.ai.update(dt);
     this.effects.update(dt);
   }

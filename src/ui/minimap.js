@@ -78,6 +78,11 @@ export class Minimap {
     this.nodeT -= dt;
     if (this.nodeT <= 0) { this.nodeT = 3; this.renderNodes(); }
 
+    // ~12Hz is plenty for a minimap; full-rate redraw was pure waste
+    this.drawT = (this.drawT || 0) - dt;
+    if (this.drawT > 0) return;
+    this.drawT = 0.08;
+
     const ctx = this.ctx;
     const S = this.S;
     ctx.drawImage(this.terrainLayer, 0, 0);
@@ -118,8 +123,8 @@ export class Minimap {
 
   projectToGround(ndcX, ndcY) {
     this.raycaster.setFromCamera({ x: ndcX, y: ndcY }, this.camera);
-    const out = new THREE.Vector3();
-    const hit = this.raycaster.ray.intersectPlane(this.groundPlane, out);
-    return hit ? out : null;
+    this._scratch = this._scratch || new THREE.Vector3();
+    const hit = this.raycaster.ray.intersectPlane(this.groundPlane, this._scratch);
+    return hit ? this._scratch : null;
   }
 }

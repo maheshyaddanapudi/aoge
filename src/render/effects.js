@@ -17,8 +17,13 @@ export function makeSelectionRing(radius, friendly = true) {
   return m;
 }
 
-// --- Health bars: two sprites (dark bg + green fg) -------------------------
+// --- Health bars: two sprites, all materials shared (three tiers) ----------
 const barBgMat = new THREE.SpriteMaterial({ color: 0x241010, depthTest: false });
+const barFgMats = [
+  new THREE.SpriteMaterial({ color: 0x46d435, depthTest: false }), // healthy
+  new THREE.SpriteMaterial({ color: 0xe8c020, depthTest: false }), // hurt
+  new THREE.SpriteMaterial({ color: 0xd43520, depthTest: false }), // critical
+];
 
 export class HealthBar {
   constructor(parent, width = 1.5, y = 2.4) {
@@ -26,7 +31,7 @@ export class HealthBar {
     this.width = width;
     this.bg = new THREE.Sprite(barBgMat);
     this.bg.scale.set(width, 0.16, 1);
-    this.fg = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0x46d435, depthTest: false }));
+    this.fg = new THREE.Sprite(barFgMats[0]);
     this.fg.center.set(0, 0.5);
     this.fg.position.x = -width / 2;
     this.fg.scale.set(width, 0.12, 1);
@@ -41,15 +46,16 @@ export class HealthBar {
     if (!visible) return;
     const f = Math.max(0.001, Math.min(1, frac));
     this.fg.scale.x = this.width * f;
-    this.fg.material.color.setHex(f > 0.55 ? 0x46d435 : f > 0.25 ? 0xe8c020 : 0xd43520);
+    this.fg.material = barFgMats[f > 0.55 ? 0 : f > 0.25 ? 1 : 2];
   }
-  dispose() { this.fg.material.dispose(); }
 }
 
 // --- Effects manager --------------------------------------------------------
 const arrowGeo = new THREE.BoxGeometry(0.05, 0.05, 0.85);
 const stoneGeo = new THREE.IcosahedronGeometry(0.3, 0);
 const puffGeo = new THREE.IcosahedronGeometry(0.22, 0);
+const _aim = new THREE.Vector3();
+const _dir = new THREE.Vector3();
 
 export class Effects {
   constructor(scene, game) {
@@ -127,8 +133,11 @@ export class Effects {
   }
 
   puff(pos, color = 0xcacaca, n = 6, speed = 4) {
+    // one material per burst (shared by its particles, disposed with the last)
+    const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 });
+    mat.userData.refs = n;
     for (let i = 0; i < n; i++) {
-      const m = new THREE.Mesh(puffGeo, new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 }));
+      const m = new THREE.Mesh(puffGeo, mat);
       m.position.copy(pos);
       const v = new THREE.Vector3((Math.random() - 0.5) * speed, Math.random() * speed * 0.8 + 1, (Math.random() - 0.5) * speed);
       this.scene.add(m);
@@ -141,6 +150,8 @@ export class Effects {
   // Sink-and-remove animation for dead units / razed buildings.
   // Pass a mixer to keep a death animation playing during the fade.
   fadeOut(object3d, dur = 1.6, sink = 1.2, mixer = null) {
+    // shadows off once, up front (was a full traverse per frame)
+    object3d.traverse(o => { if (o.castShadow !== undefined) o.castShadow = false; });
     this.fades.push({ obj: object3d, t: 0, dur, sink, y0: object3d.position.y, mixer });
   }
 
@@ -169,20 +180,23 @@ export class Effects {
       if (p.kind === 'arrow') {
         const t = p.target;
         if (!t || t.dead) { this.scene.remove(p.mesh); this.projectiles.splice(i, 1); continue; }
-        const aim = t.pos3();
-        aim.y += t.isBuilding ? 1.6 : 1.1;
-        const d = aim.clone().sub(p.mesh.position);
-        const dist = d.length();
+        // scratch vectors — this runs per arrow per frame
+        _aim.set(
+          t.isBuilding ? t.cx : t.x,
+          (t.isBuilding ? t.groundY + 1.6 : t.group.position.y + 1.1),
+          t.isBuilding ? t.cz : t.z);
+        _dir.copy(_aim).sub(p.mesh.position);
+        const dist = _dir.length();
         const step = p.speed * dt;
         if (dist <= step + 0.2) {
           game.applyDamage(t, p.damage, p.attacker);
-          this.blood(aim);
+          this.blood(_aim);
           this.scene.remove(p.mesh);
           this.projectiles.splice(i, 1);
         } else {
-          d.normalize();
-          p.mesh.position.addScaledVector(d, step);
-          p.mesh.lookAt(aim);
+          _dir.normalize();
+          p.mesh.position.addScaledVector(_dir, step);
+          p.mesh.lookAt(_aim);
         }
       } else { // stone
         p.t += dt;
@@ -204,7 +218,8 @@ export class Effects {
       pt.t += dt;
       if (pt.t >= pt.life) {
         this.scene.remove(pt.mesh);
-        pt.mesh.material.dispose();
+        const m = pt.mesh.material;
+        if (m.userData.refs !== undefined && --m.userData.refs <= 0) m.dispose();
         this.particles.splice(i, 1);
         continue;
       }
@@ -226,7 +241,6 @@ export class Effects {
         continue;
       }
       f.obj.position.y = f.y0 - f.sink * k;
-      f.obj.traverse(o => { if (o.castShadow !== undefined) o.castShadow = false; });
     }
   }
 }

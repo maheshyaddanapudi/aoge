@@ -31,7 +31,7 @@ const map = new GameMap();
 const starts = pickStartLocations(map);
 const resourceDescriptors = generateResources(map, starts, LITE);
 const { ground: terrainMesh, waterNormalTex } = buildTerrain(scene, map);
-const trees = new TreeRenderer(scene, 1000, LITE);
+const trees = new TreeRenderer(scene, 1000);
 await trees.load();
 
 const game = new Game(scene, map, trees);

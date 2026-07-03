@@ -114,7 +114,9 @@ export function thatch(size = 128) {
     }
   }
   ctx.putImageData(img, 0, 0);
-  return { map: toTexture(c, 2), normalMap: normalFrom(c, 1.6), normalRepeat: 2 };
+  const nm = normalFrom(c, 1.6);
+  nm.repeat.set(2, 2); // keep relief aligned with the color pattern
+  return { map: toTexture(c, 2), normalMap: nm };
 }
 
 export function stoneBlocks(size = 128) {
@@ -138,7 +140,9 @@ export function stoneBlocks(size = 128) {
     }
   }
   ctx.putImageData(img, 0, 0);
-  return { map: toTexture(c, 2), normalMap: normalFrom(c, 2.0), normalRepeat: 2 };
+  const nm = normalFrom(c, 2.0);
+  nm.repeat.set(2, 2);
+  return { map: toTexture(c, 2), normalMap: nm };
 }
 
 export function planks(size = 128) {
@@ -161,7 +165,9 @@ export function planks(size = 128) {
     }
   }
   ctx.putImageData(img, 0, 0);
-  return { map: toTexture(c, 1.5), normalMap: normalFrom(c, 1.5), normalRepeat: 1.5 };
+  const nm = normalFrom(c, 1.5);
+  nm.repeat.set(1.5, 1.5);
+  return { map: toTexture(c, 1.5), normalMap: nm };
 }
 
 export function plaster(size = 128) {

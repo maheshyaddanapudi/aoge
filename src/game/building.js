@@ -8,6 +8,15 @@ import { packBuilding } from '../render/pack.js';
 
 let NEXT_ID = 100000;
 
+import { HITBOX_MAT } from './unit.js';
+const bHitboxGeos = new Map();
+function buildingHitboxGeo(size, h) {
+  const key = size + 'x' + h.toFixed(1);
+  let g = bHitboxGeos.get(key);
+  if (!g) { g = new THREE.BoxGeometry(size * TILE * 0.96, h, size * TILE * 0.96); bHitboxGeos.set(key, g); }
+  return g;
+}
+
 export class Building {
   constructor(game, type, owner, gx, gy, prebuilt = false) {
     this.id = NEXT_ID++;
@@ -55,12 +64,9 @@ export class Building {
     // Invisible click hitbox over the whole footprint so the building (and
     // especially a barely-started construction site, which renders as a flat
     // sliver) is always easy to tap/click to select or resume building.
-    const hbS = this.size * TILE;
+    // Shared geometry/material per footprint size — buildings churn too.
     const hbH = Math.max(2.5, this.size * 1.6);
-    const hitbox = new THREE.Mesh(
-      new THREE.BoxGeometry(hbS * 0.96, hbH, hbS * 0.96),
-      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
-    );
+    const hitbox = new THREE.Mesh(buildingHitboxGeo(this.size, hbH), HITBOX_MAT);
     hitbox.position.y = hbH / 2;
     hitbox.userData.entity = this;
     group.add(hitbox);

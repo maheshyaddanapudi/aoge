@@ -168,12 +168,9 @@ function boxProjectUV(geometry, tile) {
 }
 
 export class TreeRenderer {
-  constructor(scene, capacity = 1000, lite = false) {
+  constructor(scene, capacity = 1000) {
     this.scene = scene;
     this.capacity = capacity;
-    // lite: render only a fraction of trees (foliage is the heaviest cost on
-    // software GPUs); the rest remain as invisible (still-choppable) nodes.
-    this.lite = lite;
     this.zero = new THREE.Matrix4().makeScale(0, 0, 0);
     this.tmpM = new THREE.Matrix4();
     this.tmpC = new THREE.Color();
@@ -280,8 +277,11 @@ export class TreeRenderer {
 
   remove(handle) {
     if (!handle) return;
-    for (const part of handle.species.parts) part.inst.setMatrixAt(handle.idx, this.zero);
-    this.flush();
+    // touch only the removed tree's own species meshes, not all 16
+    for (const part of handle.species.parts) {
+      part.inst.setMatrixAt(handle.idx, this.zero);
+      part.inst.instanceMatrix.needsUpdate = true;
+    }
   }
 
   flush() {

@@ -10,6 +10,24 @@ import { makeSelectionRing, HealthBar } from '../render/effects.js';
 
 let NEXT_ID = 1;
 
+// shared, never-disposed pick-helper resources
+export const HITBOX_MAT = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+const hitboxGeos = new Map();
+export function hitboxGeo(r, h) {
+  const key = r.toFixed(2) + 'x' + h.toFixed(2);
+  let g = hitboxGeos.get(key);
+  if (!g) { g = new THREE.CylinderGeometry(r, r, h, 8); hitboxGeos.set(key, g); }
+  return g;
+}
+
+// carried-resource indicator: one geometry, one material per resource
+const carryGeo = new THREE.IcosahedronGeometry(0.18, 0);
+const carryMats = {
+  wood: new THREE.MeshLambertMaterial({ color: 0x8a623a }),
+  food: new THREE.MeshLambertMaterial({ color: 0xc23b3b }),
+  gold: new THREE.MeshLambertMaterial({ color: 0xe8b923 }),
+};
+
 export class Unit {
   constructor(game, type, owner, x, z) {
     this.id = NEXT_ID++;
@@ -52,14 +70,11 @@ export class Unit {
     this.adoptModel();
 
     // Invisible click hitbox: thin/skinned character meshes are hard to hit
-    // with a raycast, so give every unit a fat pickable cylinder. colorWrite/
-    // depthWrite off = renders nothing but still raycasts.
+    // with a raycast, so give every unit a fat pickable cylinder (geometry
+    // and material shared per shape — units die by the hundreds).
     const hbH = type === 'catapult' ? 2.4 : type === 'knight' ? 2.8 : 2.0;
     const hbR = this.radius + 0.35;
-    const hitbox = new THREE.Mesh(
-      new THREE.CylinderGeometry(hbR, hbR, hbH, 8),
-      new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false })
-    );
+    const hitbox = new THREE.Mesh(hitboxGeo(hbR, hbH), HITBOX_MAT);
     hitbox.position.y = hbH / 2;
     hitbox.userData.entity = this;
     group.add(hitbox);
@@ -652,21 +667,15 @@ export class Unit {
   updateCarryMesh() {
     const has = this.carry && this.carry.amt > 0;
     if (has && !this.carryMesh) {
-      const colors = { wood: 0x8a623a, food: 0xc23b3b, gold: 0xe8b923 };
-      const m = new THREE.Mesh(
-        new THREE.IcosahedronGeometry(0.18, 0),
-        new THREE.MeshLambertMaterial({ color: colors[this.carry.res] })
-      );
+      const m = new THREE.Mesh(carryGeo, carryMats[this.carry.res] || carryMats.wood);
       m.position.set(0, 1.65, -0.34);
       this.group.add(m);
       this.carryMesh = m;
     } else if (!has && this.carryMesh) {
       this.group.remove(this.carryMesh);
-      this.carryMesh.material.dispose();
       this.carryMesh = null;
     } else if (has && this.carryMesh) {
-      const colors = { wood: 0x8a623a, food: 0xc23b3b, gold: 0xe8b923 };
-      this.carryMesh.material.color.setHex(colors[this.carry.res]);
+      this.carryMesh.material = carryMats[this.carry.res] || carryMats.wood;
     }
   }
 

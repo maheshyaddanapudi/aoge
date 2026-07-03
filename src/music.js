@@ -237,6 +237,10 @@ export function stopMusic(fadeSec = 1.5) {
     const t = ctx.currentTime;
     bus.gain.setValueAtTime(bus.gain.value, t);
     bus.gain.linearRampToValueAtTime(0.0001, t + fadeSec);
+    // tear the graph down after the fade so a future start doesn't stack
+    const oldBus = bus, oldWet = wet;
+    setTimeout(() => { try { oldBus.disconnect(); oldWet.disconnect(); } catch { /* already gone */ } }, fadeSec * 1000 + 100);
+    bus = null; wet = null;
   }
 }
 

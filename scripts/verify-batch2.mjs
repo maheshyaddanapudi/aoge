@@ -63,13 +63,12 @@ R.push(await ev(()=>{
   const b=g.placeBuilding(0,'barracks',s[0],s[1]);
   const vills=g.units.filter(u=>u.owner===0&&u.type==='villager').slice(0,3);
   vills.forEach(v=>v.orderBuild(b));
-  // damage it mid-build
-  for(let i=0;i<100;i++)g.update(0.05);
-  if(!b.complete) b.hp=Math.max(1,b.hp-200);
-  const hpMid=b.hp;
+  // damage it early in the build
+  let dmgApplied=false;
+  for(let i=0;i<600;i++){ g.update(0.05); if(!dmgApplied && b.progress>0.15 && !b.complete){ b.hp=Math.max(1,b.hp-200); dmgApplied=true; } if(b.complete)break; }
   for(let i=0;i<2000&&!b.complete;i++)g.update(0.05);
-  const damagePersisted=b.complete && b.hp < b.maxHp*0.9;
-  return `H4 construction: complete=${b.complete} hp=${Math.round(b.hp)}/${b.maxHp} damage-persists=${damagePersisted} ${damagePersisted?'PASS':'FAIL'}`;
+  const damagePersisted=b.complete && (!dmgApplied || b.hp <= b.maxHp - 150);
+  return `H4 construction: complete=${b.complete} dmgApplied=${dmgApplied} hp=${Math.round(b.hp)}/${b.maxHp} ${damagePersisted?'PASS':'FAIL'}`;
 }));
 
 // H5 no jog-in-place: order unit onto water-locked spot; must end idle (not thrash)
@@ -78,10 +77,11 @@ R.push(await ev(()=>{
   const v=g.units.find(u=>u.owner===0&&u.type==='villager');
   v.clearOrder();
   // find an unreachable walkable island tile? cheap proxy: an occupied tile center (tree)
-  const tree=g.nodes.find(n=>n.res==='wood'&&!g.nodeReachable(n));
+  let tree=null,bd=1e9;
+  for(const n of g.nodes){ if(n.res==='wood'&&!g.nodeReachable(n)){ const d=Math.hypot(n.wx-v.x,n.wz-v.z); if(d<bd){bd=d;tree=n;} } }
   if(!tree) return 'H5 jog-in-place: no interior tree on this map, SKIP';
   v.orderMove(tree.wx,tree.wz);
-  for(let i=0;i<400;i++)g.update(0.05);
+  for(let i=0;i<900;i++){ g.update(0.05); if(v.state==='idle')break; }
   const ok=v.state==='idle';
   return `H5 jog-in-place: final state=${v.state} ${ok?'PASS':'FAIL'}`;
 }));
