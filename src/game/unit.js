@@ -26,6 +26,7 @@ const carryMats = {
   wood: new THREE.MeshLambertMaterial({ color: 0x8a623a }),
   food: new THREE.MeshLambertMaterial({ color: 0xc23b3b }),
   gold: new THREE.MeshLambertMaterial({ color: 0xe8b923 }),
+  stone: new THREE.MeshLambertMaterial({ color: 0xb9b6ac }),
 };
 
 export class Unit {
@@ -134,10 +135,23 @@ export class Unit {
 
   // ---- orders ---------------------------------------------------------------
 
-  clearOrder() {
+  // Soft clear advances to the next shift-queued order; hard clear (stop
+  // button / explicit new command) wipes the whole queue.
+  clearOrder(hard = false) {
+    if (hard) this.orderQueue = null;
     this.order = null;
     this.state = 'idle';
     this.path = null;
+    if (!hard && this.orderQueue?.length) {
+      const next = this.orderQueue.shift();
+      next();
+    }
+  }
+
+  // Shift-queued command: run after the current order finishes.
+  pushOrder(fn) {
+    if (this.state === 'idle' && !this.order) { fn(); return; }
+    (this.orderQueue = this.orderQueue || []).push(fn);
   }
 
   orderMove(x, z) {
@@ -190,6 +204,30 @@ export class Unit {
     this.order = { kind: 'attackmove', x, z };
     this.state = 'move';
     this.requestPath(x, z);
+  }
+
+  // Walk into a building and hide inside (town bell).
+  orderGarrison(building) {
+    if (!building || building.dead || !building.complete) return;
+    this.order = { kind: 'garrison', building };
+    this.state = 'toGarrison';
+    this.requestPath(building.cx, building.cz);
+  }
+
+  updateToGarrison(dt) {
+    const b = this.order?.building;
+    if (!b || b.dead) { this.clearOrder(); return; }
+    if (this.distTo(b) < 1.8) {
+      this.garrisoned = b;
+      (b.garrison = b.garrison || []).push(this);
+      this.group.visible = false;
+      this.setSelected(false);
+      this.order = null;
+      this.state = 'garrisoned';
+      this.path = null;
+      return;
+    }
+    if (this.followPath(dt)) this.requestPath(b.cx, b.cz);
   }
 
   // ---- pathing ---------------------------------------------------------------
@@ -246,6 +284,8 @@ export class Unit {
     this.moving = false;
 
     switch (this.state) {
+      case 'garrisoned': return; // hidden inside a building
+      case 'toGarrison': this.updateToGarrison(dt); break;
       case 'idle': this.updateIdle(dt); break;
       case 'move': this.updateMove(dt); break;
       case 'toResource': this.updateToResource(dt); break;

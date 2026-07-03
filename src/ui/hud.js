@@ -4,12 +4,15 @@ import { PLAYER, AGES, UNITS, BUILDINGS, BUILD_MENU, canAfford } from '../config
 import { playSound } from '../audio.js';
 import { stopMusic } from '../music.js';
 
-const RES_ICONS = { wood: '\u{1FAB5}', food: '\u{1F356}', gold: '\u{1FA99}' };
+const RES_ICONS = { wood: '\u{1FAB5}', food: '\u{1F356}', gold: '\u{1FA99}', stone: '\u{1FAA8}' };
+
+// command-card hotkeys (avoids WASD camera keys and A/T/H/P/M/. global keys)
+const CARD_KEYS = ['KeyQ', 'KeyE', 'KeyR', 'KeyF', 'KeyG', 'KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyY'];
 
 function costHtml(cost) {
   if (!cost) return '';
   const parts = [];
-  for (const r of ['wood', 'food', 'gold']) {
+  for (const r of ['wood', 'food', 'gold', 'stone']) {
     if (cost[r]) parts.push(`${RES_ICONS[r]}${cost[r]}`);
   }
   return parts.join(' ');
@@ -27,6 +30,7 @@ export class HUD {
       wood: document.getElementById('res-wood'),
       food: document.getElementById('res-food'),
       gold: document.getElementById('res-gold'),
+      stone: document.getElementById('res-stone'),
       pop: document.getElementById('res-pop'),
       age: document.getElementById('age-disp'),
       alerts: document.getElementById('alerts'),
@@ -38,10 +42,25 @@ export class HUD {
       gameover: document.getElementById('gameover-overlay'),
       gameoverTitle: document.getElementById('gameover-title'),
       gameoverSub: document.getElementById('gameover-sub'),
+      idleBtn: document.getElementById('idle-btn'),
+      idleCount: document.getElementById('idle-count'),
     };
+    this.hotkeys = new Map(); // KeyCode -> command button
 
     game.onAlert = (msg, good) => this.alert(msg, good);
     game.onGameOver = (won) => this.showGameOver(won);
+
+    // idle villager cycling (same behavior as the '.' key, tap-friendly)
+    this.el.idleBtn.classList.remove('hidden');
+    this.el.idleBtn.addEventListener('click', () => this.input.cycleIdleVillager());
+
+    // command-card hotkeys
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.shiftKey || e.ctrlKey || e.metaKey) return;
+      if (document.querySelector('.overlay:not(.hidden)')) return;
+      const btn = this.hotkeys.get(e.code);
+      if (btn && !btn.classList.contains('disabled')) btn.click();
+    });
   }
 
   alert(msg, good = false) {
@@ -80,7 +99,8 @@ export class HUD {
     const first = sel[0];
     if (sel.length === 1 && first?.isBuilding) {
       key += '|' + (first.complete ? 'c' : 'u') + '|' + first.trainQueue.join(',') +
-             '|' + (first.researching ? 'R' : '') + '|' + (p.ageResearchInProgress ? 'A' : '');
+             '|' + (first.researching ? 'R' : '') + '|' + (p.ageResearchInProgress ? 'A' : '') +
+             '|' + (first.garrison?.length || 0);
     }
     return key;
   }
@@ -90,8 +110,18 @@ export class HUD {
     this.el.wood.textContent = Math.floor(p.res.wood);
     this.el.food.textContent = Math.floor(p.res.food);
     this.el.gold.textContent = Math.floor(p.res.gold);
+    this.el.stone.textContent = Math.floor(p.res.stone || 0);
     this.el.pop.textContent = `${p.popUsed}/${p.popCap}`;
     this.el.age.textContent = AGES[p.age - 1].name + (p.ageResearchInProgress ? ' ⏳' : '');
+
+    // idle villager badge
+    this.idleT = (this.idleT || 0) - dt;
+    if (this.idleT <= 0) {
+      this.idleT = 0.5;
+      const idle = this.game.units.filter(u => u.owner === PLAYER && !u.dead && u.type === 'villager' && u.state === 'idle' && !u.garrisoned).length;
+      this.el.idleCount.textContent = idle;
+      this.el.idleBtn.classList.toggle('none', idle === 0);
+    }
 
     const key = this.computeStructKey();
     if (key !== this.structKey) {
@@ -109,6 +139,8 @@ export class HUD {
     queueRow.innerHTML = '';
     cmdPanel.innerHTML = '';
     this.dyn = [];
+    this.hotkeys.clear();
+    this._keyIdx = 0;
 
     if (!sel.length) {
       selTitle.textContent = 'No selection';
@@ -164,14 +196,20 @@ export class HUD {
           !usable(), costHtml(def.cost));
         btn.onclick = () => { if (usable()) this.input.startPlacement(type); else this.game.sound('error'); };
         this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
-        cmdPanel.appendChild(btn);
+        this.addCmd(btn);
       }
     }
 
     if (units.length) {
+      // attack-move for military selections
+      if (units.some(u => u.type !== 'villager')) {
+        const am = this.button('\u2694\uFE0F', 'Atk-Move (A)', 'Attack-move: engage everything on the way<br>Press A then click a destination');
+        am.onclick = () => this.input.armAttackMove();
+        this.addCmd(am);
+      }
       const stop = this.button('\u{1F6D1}', 'Stop (T)', 'Stop current order');
-      stop.onclick = () => { for (const u of units) u.clearOrder(); };
-      cmdPanel.appendChild(stop);
+      stop.onclick = () => { for (const u of units) u.clearOrder(true); };
+      this.addCmd(stop);
     }
 
     if (sel.length === 1 && first.isBuilding) {
@@ -188,7 +226,7 @@ export class HUD {
             if (!b.queueTrain(ut)) this.game.sound('error'); else this.game.sound('command');
           };
           this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
-          cmdPanel.appendChild(btn);
+          this.addCmd(btn);
         }
       }
       if (b.complete && b.def.researchesAge && p.age < AGES.length) {
@@ -197,13 +235,20 @@ export class HUD {
         const btn = this.button('\u{1F3F0}', `Advance`, `Advance to ${next.name}<br>${costHtml(next.cost)}<br>${next.time}s`, !usable(), costHtml(next.cost));
         btn.onclick = () => { if (usable() && b.startAgeResearch()) this.game.sound('command'); else this.game.sound('error'); };
         this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
-        cmdPanel.appendChild(btn);
+        this.addCmd(btn);
       }
       // demolish: full refund while under construction, none once complete
       const del = this.button('\u{1F5D1}', b.complete ? 'Demolish' : 'Cancel',
         b.complete ? `Demolish this ${b.def.name} (no refund)` : `Cancel construction<br>full refund`);
       del.onclick = () => { game.deleteBuilding(b); this.input.select([]); };
-      cmdPanel.appendChild(del);
+      this.addCmd(del);
+      // town bell on the TC: garrison nearby villagers / release them
+      if (b.complete && b.type === 'towncenter') {
+        const bell = this.button('\u{1F514}', (b.garrison?.length ? 'Release' : 'Bell'),
+          b.garrison?.length ? `Release ${b.garrison.length} villagers` : 'Ring the bell: nearby villagers hide inside (they add arrows)');
+        bell.onclick = () => { game.townBell(b); };
+        this.addCmd(bell);
+      }
 
       // production queue (progress widths patch live; cancel is identity-checked)
       if (b.researching) {
@@ -237,6 +282,19 @@ export class HUD {
         queueRow.appendChild(hint);
       }
     }
+  }
+
+  // append a command button and give it the next free hotkey
+  addCmd(btn) {
+    const code = CARD_KEYS[this._keyIdx++];
+    if (code) {
+      this.hotkeys.set(code, btn);
+      const k = document.createElement('span');
+      k.className = 'key';
+      k.textContent = code.slice(3);
+      btn.appendChild(k);
+    }
+    this.el.cmdPanel.appendChild(btn);
   }
 
   button(icon, label, tooltip, disabled = false, cost = '') {

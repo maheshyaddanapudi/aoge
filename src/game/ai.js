@@ -12,9 +12,9 @@ const ATTACK_AT_BY_AGE = [6, 9, 12, 16]; // always below the cap so waves actual
 // easy: passive (defends only), slow eco; normal: the tuned default;
 // hard: richer eco and earlier, larger attack waves.
 const DIFFICULTY = {
-  easy:   { trickle: [0, 0, 0], villMul: 0.6,  armyMul: 0.3, atkMul: 3,   firstWave: 1e9, waveMul: 3,   ecoScale: 1.8, maxAge: 1 },
-  normal: { trickle: [3, 3, 2], villMul: 1,    armyMul: 1,   atkMul: 1,   firstWave: 150, waveMul: 1,   ecoScale: 1,   maxAge: 4 },
-  hard:   { trickle: [6, 6, 4], villMul: 1.15, armyMul: 1.3, atkMul: 0.7, firstWave: 85,  waveMul: 0.7, ecoScale: 0.8, maxAge: 4 },
+  easy:   { trickle: [0, 0, 0, 0], villMul: 0.6,  armyMul: 0.3, atkMul: 3,   firstWave: 1e9, waveMul: 3,   ecoScale: 1.8, maxAge: 1 },
+  normal: { trickle: [3, 3, 2, 1], villMul: 1,    armyMul: 1,   atkMul: 1,   firstWave: 150, waveMul: 1,   ecoScale: 1,   maxAge: 4 },
+  hard:   { trickle: [6, 6, 4, 2], villMul: 1.15, armyMul: 1.3, atkMul: 0.7, firstWave: 85,  waveMul: 0.7, ecoScale: 0.8, maxAge: 4 },
 };
 
 export class AI {
@@ -73,8 +73,8 @@ export class AI {
     if (this.trickleT >= 5) {
       this.trickleT -= 5;
       const r = this.p().res;
-      const [tw, tf, tg] = this.d.trickle;
-      r.wood += tw; r.food += tf; r.gold += tg;
+      const [tw, tf, tg, ts] = this.d.trickle;
+      r.wood += tw; r.food += tf; r.gold += tg; r.stone = (r.stone || 0) + (ts || 0);
     }
 
     if (this.ecoT <= 0) { this.ecoT = 1.4 * this.d.ecoScale; this.economy(); }
@@ -157,7 +157,7 @@ export class AI {
 
   neededResource(vills) {
     // crude balance: count gatherers per resource
-    const counts = { wood: 0, food: 0, gold: 0 };
+    const counts = { wood: 0, food: 0, gold: 0, stone: 0 };
     for (const v of vills) {
       const o = v.order;
       if (!o) continue;
@@ -165,13 +165,15 @@ export class AI {
       else if (o.kind === 'gather' && o.node) counts[o.node.res]++;
     }
     const p = this.p();
+    // stone matters from Feudal on (towers/gates) and when the bank is low
+    const wantStone = p.age >= 2 && (p.res.stone || 0) < 120 ? 0.14 : 0;
     const want = p.age === 1
-      ? { wood: 0.38, food: 0.45, gold: 0.17 }
-      : { wood: 0.34, food: 0.38, gold: 0.28 };
-    const total = Math.max(1, counts.wood + counts.food + counts.gold);
+      ? { wood: 0.38, food: 0.45, gold: 0.17, stone: 0 }
+      : { wood: 0.32 - wantStone / 2, food: 0.36, gold: 0.18, stone: wantStone };
+    const total = Math.max(1, counts.wood + counts.food + counts.gold + (counts.stone || 0));
     let best = 'food', bestGap = -Infinity;
-    for (const r of ['wood', 'food', 'gold']) {
-      const gap = want[r] - counts[r] / total;
+    for (const r of ['wood', 'food', 'gold', 'stone']) {
+      const gap = (want[r] || 0) - (counts[r] || 0) / total;
       if (gap > bestGap) { bestGap = gap; best = r; }
     }
     return best;

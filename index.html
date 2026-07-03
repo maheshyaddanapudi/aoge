@@ -27,9 +27,13 @@
     .res .val { font-weight: bold; font-variant-numeric: tabular-nums; }
     #age-disp { margin-left: auto; font-weight: bold; color: #ffd970; letter-spacing: .5px;
       padding: 3px 14px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px; }
-    #mute-btn { margin-left: 8px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px;
+    #mute-btn, #pause-btn, #idle-btn { margin-left: 8px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px;
       color: #f0e6d2; font-size: 15px; padding: 3px 10px; cursor: pointer; }
-    #mute-btn:hover { background: rgba(255,255,255,.1); }
+    #mute-btn:hover, #pause-btn:hover, #idle-btn:hover { background: rgba(255,255,255,.1); }
+    #idle-btn { font-size: 13px; }
+    #idle-btn.none { opacity: .4; }
+    #pause-btn.paused { background: #7a5c28; color: #ffe9b0; border-color: #b08c40; }
+    .cmd-btn .key { position: absolute; top: 1px; right: 4px; font-size: 8px; color: #b8a87e; }
     #speed-ctrl { display: flex; gap: 2px; margin-left: 10px; }
     .speed-btn { background: rgba(0,0,0,.35); border: 1px solid #5a4520; color: #cbbfa5;
       font-size: 12px; padding: 3px 7px; cursor: pointer; border-radius: 3px; font-weight: bold; }
@@ -143,7 +147,9 @@
     <div class="res"><span class="ico">&#129717;</span><span class="val" id="res-wood">0</span></div>
     <div class="res"><span class="ico">&#127830;</span><span class="val" id="res-food">0</span></div>
     <div class="res"><span class="ico">&#129689;</span><span class="val" id="res-gold">0</span></div>
+    <div class="res"><span class="ico">&#129704;</span><span class="val" id="res-stone">0</span></div>
     <div class="res"><span class="ico">&#128100;</span><span class="val" id="res-pop">0/0</span></div>
+    <button id="idle-btn" title="Next idle villager (.)" class="hidden">&#129489;&#8205;&#127806; <span id="idle-count">0</span></button>
     <div id="age-disp">Dark Age</div>
     <div id="speed-ctrl" title="Game speed ( [ slower / ] faster )">
       <button class="speed-btn" data-speed="1">1&times;</button>
@@ -151,6 +157,7 @@
       <button class="speed-btn" data-speed="3">3&times;</button>
       <button class="speed-btn" data-speed="4">4&times;</button>
     </div>
+    <button id="pause-btn" title="Pause (P)">&#9208;</button>
     <button id="mute-btn" title="Toggle sound">&#128266;</button>
   </div>
 
@@ -179,7 +186,8 @@
         <kbd>Left click</kbd> select &nbsp;&middot;&nbsp; <kbd>drag</kbd> box-select &nbsp;&middot;&nbsp; <kbd>Right click</kbd> move / gather / attack / build<br/>
         <kbd>W A S D</kbd> / <kbd>arrows</kbd> / screen edge &mdash; pan camera &nbsp;&middot;&nbsp; <kbd>wheel</kbd> zoom<br/>
         <kbd>Shift</kbd>+<kbd>1-9</kbd> set control group &nbsp;&middot;&nbsp; <kbd>1-9</kbd> recall (double-tap centers) &nbsp;&middot;&nbsp; <kbd>Esc</kbd> cancel placement<br/>
-        <kbd>H</kbd> jump to Town Center &nbsp;&middot;&nbsp; <kbd>.</kbd> next idle villager &nbsp;&middot;&nbsp; <kbd>[</kbd> <kbd>]</kbd> game speed
+        <kbd>A</kbd> attack-move &nbsp;&middot;&nbsp; <kbd>M</kbd> select army &nbsp;&middot;&nbsp; <kbd>P</kbd> pause &nbsp;&middot;&nbsp; <kbd>Shift</kbd>+command queues orders &nbsp;&middot;&nbsp; double-click selects same type<br/>
+        <kbd>H</kbd> jump to Town Center &nbsp;&middot;&nbsp; <kbd>.</kbd> next idle villager &nbsp;&middot;&nbsp; <kbd>[</kbd> <kbd>]</kbd> game speed &nbsp;&middot;&nbsp; command buttons show their hotkey
         <br/><br/><b>Touch</b> &mdash; <kbd>tap</kbd> a unit to select, then <kbd>tap</kbd> a tree / enemy / ground to gather / attack / move &nbsp;&middot;&nbsp; <kbd>drag</kbd> to pan &nbsp;&middot;&nbsp; <kbd>pinch</kbd> to zoom &nbsp;&middot;&nbsp; <kbd>&#9783;</kbd> button to box-select
       </div>
       <p style="color:#cbbfa5;font-size:13.5px">Villagers gather &#129717; wood, &#127830; food and &#129689; gold and construct buildings.<br/>Houses raise your population cap. Each Age unlocks stronger units and buildings.</p>

@@ -8,7 +8,7 @@ import {
 } from '../config.js';
 import { Unit } from './unit.js';
 import { Building } from './building.js';
-import { makeBerryBush, makeGoldMine, mat, C } from '../render/models.js';
+import { makeBerryBush, makeGoldMine, makeStoneMine, mat, C } from '../render/models.js';
 
 let NODE_ID = 1;
 
@@ -72,7 +72,7 @@ export class Game {
         node.treeHandle = this.trees.add(wx, y - 0.1, wz, rand());
         if (node.treeHandle) this.treeNodeByInstance.set(node.treeHandle.idx, node);
       } else {
-        const mesh = d.type === 'berry' ? makeBerryBush() : makeGoldMine();
+        const mesh = d.type === 'berry' ? makeBerryBush() : d.type === 'stone' ? makeStoneMine() : makeGoldMine();
         mesh.position.set(wx, y - 0.05, wz);
         mesh.rotation.y = rand() * Math.PI * 2;
         mesh.userData.node = node;
@@ -195,6 +195,11 @@ export class Game {
       this.onAlert('Your forces are under attack!');
       this.sound('horn');
     }
+    // minimap ping for any hit on the player's stuff (own throttle)
+    if (target.owner === PLAYER && this.time - (this.lastPingT || -9) > 3) {
+      this.lastPingT = this.time;
+      this.onPing?.(target.isBuilding ? target.cx : target.x, target.isBuilding ? target.cz : target.z);
+    }
     if (target.isUnit && attacker && !attacker.dead) {
       const passive = target.state === 'idle' || target.state === 'gathering' ||
                       target.state === 'toResource' || target.state === 'deposit' ||
@@ -232,7 +237,7 @@ export class Game {
   splashDamage(pos, radius, dmg, attacker) {
     if (radius <= 0) return;
     for (const u of [...this.units]) {
-      if (u.dead || u === attacker) continue;
+      if (u.dead || u === attacker || u.garrisoned) continue;
       const d = Math.hypot(u.x - pos.x, u.z - pos.z);
       if (d <= radius) this.applyDamage(u, Math.round(dmg * (d < radius * 0.5 ? 1 : 0.55)), attacker);
     }
@@ -271,6 +276,17 @@ export class Game {
     b.dead = true;
     b.setSelected(false);
     b.healthBar.set(0, false);
+    // anyone garrisoned inside pours out before the roof comes down
+    if (b.garrison?.length) {
+      for (const u of b.garrison) {
+        u.garrisoned = null;
+        u.group.visible = true;
+        const [sx, sz] = b.spawnPoint();
+        u.x = sx; u.z = sz;
+        u.clearOrder(true);
+      }
+      b.garrison = [];
+    }
     // refund what was only queued/in-research — that work never happened
     const res = this.players[b.owner].res;
     for (const ut of b.trainQueue) refundCost(res, UNITS[ut].cost);
@@ -379,10 +395,35 @@ export class Game {
     return best;
   }
 
+  // Town bell: garrison nearby villagers inside the TC (they add arrows),
+  // or release everyone if some are already inside.
+  townBell(tc) {
+    if (!tc || tc.dead || !tc.complete) return;
+    if (tc.garrison?.length) {
+      for (const u of tc.garrison) {
+        u.garrisoned = null;
+        u.group.visible = true;
+        const [sx, sz] = tc.spawnPoint();
+        u.x = sx; u.z = sz;
+        u.clearOrder(true);
+      }
+      tc.garrison = [];
+      this.sound('command');
+      return;
+    }
+    let n = 0;
+    for (const u of this.units) {
+      if (u.owner !== tc.owner || u.dead || u.type !== 'villager' || u.garrisoned) continue;
+      if (Math.hypot(u.x - tc.cx, u.z - tc.cz) < 45) { u.orderGarrison(tc); n++; }
+    }
+    if (tc.owner === PLAYER) this.onAlert(n ? `Town bell! ${n} villagers heading to safety.` : 'No villagers in range of the bell.');
+    this.sound('horn');
+  }
+
   nearestEnemy(owner, x, z, r, includeBuildings = false) {
     let best = null, bestD = Infinity;
     for (const u of this.units) {
-      if (u.owner === owner || u.dead) continue;
+      if (u.owner === owner || u.dead || u.garrisoned) continue;
       const d = Math.hypot(u.x - x, u.z - z);
       if (d <= r && d < bestD) { bestD = d; best = u; }
     }

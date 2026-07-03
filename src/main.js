@@ -96,7 +96,7 @@ const input = new InputController({
   sound: playSound,
 });
 hud = new HUD(game, input);
-const minimap = new Minimap(document.getElementById('minimap'), game, rtsCam, camera);
+const minimap = new Minimap(document.getElementById('minimap'), game, rtsCam, camera, input);
 
 document.getElementById('mute-btn').addEventListener('click', (e) => {
   const m = toggleMute();
@@ -106,6 +106,24 @@ document.getElementById('mute-btn').addEventListener('click', (e) => {
 // --- main loop ---------------------------------------------------------------------
 let running = false;
 const clock = new THREE.Clock();
+
+// Rally flag: shown at the rally point while a single own production
+// building is selected.
+import { makeBanner } from './render/models.js';
+const rallyFlag = makeBanner(0xffd970, 3);
+rallyFlag.visible = false;
+scene.add(rallyFlag);
+function updateRallyFlag() {
+  const sel = input.selection;
+  const b = sel.length === 1 && sel[0].isBuilding && sel[0].owner === PLAYER && !sel[0].dead ? sel[0] : null;
+  const r = b?.rally;
+  if (!r) { rallyFlag.visible = false; return; }
+  const x = r.x ?? r.node?.wx ?? r.farm?.cx;
+  const z = r.z ?? r.node?.wz ?? r.farm?.cz;
+  if (x === undefined) { rallyFlag.visible = false; return; }
+  rallyFlag.visible = true;
+  rallyFlag.position.set(x, map.heightAt(x, z), z);
+}
 
 let waterT = 0;
 // Perf guard: if the GPU can't hold a playable framerate with the full
@@ -124,14 +142,27 @@ function setSpeed(n) {
 }
 window.__setSpeed = setSpeed;
 
+let paused = false;
+function setPaused(p) {
+  paused = p;
+  document.getElementById('pause-btn').classList.toggle('paused', paused);
+  if (paused) hud.alert('Paused — press P to resume', true);
+}
+document.getElementById('pause-btn').addEventListener('click', () => setPaused(!paused));
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyP' && e.target.tagName !== 'INPUT' &&
+      !document.querySelector('.overlay:not(.hidden)')) setPaused(!paused);
+});
+
 function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (running) for (let i = 0; i < gameSpeed; i++) game.update(dt);
+  if (running && !paused) for (let i = 0; i < gameSpeed; i++) game.update(dt);
   rtsCam.update(dt);
   updateSun(rtsCam.smoothTarget, rtsCam.smoothDist);
   hud.update(dt);
   minimap.update(dt);
+  updateRallyFlag();
   waterT += dt;
   waterNormalTex.offset.set(waterT * 0.012, waterT * 0.009);
 
@@ -157,7 +188,7 @@ function startGame(difficulty) {
   // viable without a long economy build-up.
   if (difficulty === 'easy') {
     const r = game.players[PLAYER].res;
-    r.wood += 900; r.food += 3500; r.gold += 1800;
+    r.wood += 900; r.food += 3500; r.gold += 1800; r.stone += 400;
   }
   initAudio();
   startMusic();
@@ -190,6 +221,7 @@ window.__game = game;
 window.__rtsCam = rtsCam;
 window.__input = input;
 window.__audio = { voice, combatPulse };
+window.__minimap = minimap;
 window.__startGame = startGame;
 // World -> screen projection (CSS pixels) for tooling/automation.
 window.__project = (wx, wy, wz) => {

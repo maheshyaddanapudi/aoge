@@ -198,6 +198,15 @@ export function generateResources(map, starts, lite = false) {
     }
   }
 
+  // Stone mine clusters.
+  for (let st = 0; st < 7; st++) {
+    const cx = Math.floor(8 + rand() * (size - 16)), cy = Math.floor(8 + rand() * (size - 16));
+    if (!clearOf(cx, cy, 13)) continue;
+    for (let k = 0; k < 4; k++) {
+      tryPlace(cx + (k % 2), cy + Math.floor(k / 2), 'stone');
+    }
+  }
+
   // Berry patches.
   for (let b = 0; b < 10; b++) {
     const cx = Math.floor(8 + rand() * (size - 16)), cy = Math.floor(8 + rand() * (size - 16));
@@ -227,6 +236,12 @@ export function generateResources(map, starts, lite = false) {
     const gx = Math.round(sx + Math.cos(gAng) * 10), gy = Math.round(sy + Math.sin(gAng) * 10);
     for (let k = 0; k < 4; k++) {
       tryPlace(gx + (k % 2), gy + Math.floor(k / 2), 'gold');
+    }
+    // stone
+    const stAng = gAng + Math.PI * (0.35 + rand() * 0.3);
+    const stx = Math.round(sx + Math.cos(stAng) * 12), sty = Math.round(sy + Math.sin(stAng) * 12);
+    for (let k = 0; k < 4; k++) {
+      tryPlace(stx + (k % 2), sty + Math.floor(k / 2), 'stone');
     }
   }
 

@@ -34,6 +34,7 @@ export class InputController {
     canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
     window.addEventListener('mousemove', (e) => this.onMouseMove(e));
     window.addEventListener('mouseup', (e) => this.onMouseUp(e));
+    canvas.addEventListener('dblclick', (e) => this.onDblClick(e));
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -168,6 +169,7 @@ export class InputController {
   // the construction site, deposit at the TC) — selection switching only
   // happens when nothing commandable is under the tap.
   handleTap(x, y) {
+    if (this.attackMoveArmed) { this.fireAttackMove(x, y); return; }
     const hit = this.pick(x, y) || {};
     const ent = hit.entity || null;
     const ownSel = this.selection.filter(e => !e.dead && e.owner === PLAYER);
@@ -302,12 +304,68 @@ export class InputController {
         this.tryPlace(e.shiftKey);
         return;
       }
+      if (this.attackMoveArmed) {
+        this.fireAttackMove(e.clientX, e.clientY);
+        return;
+      }
       this.dragStart = { x: e.clientX, y: e.clientY, shift: e.shiftKey };
       this.dragging = false;
     } else if (e.button === 2) {
       if (this.placing) { this.cancelPlacement(); return; }
-      this.issueContextCommand(e.clientX, e.clientY);
+      if (this.attackMoveArmed) { this.disarmAttackMove(); return; }
+      this.issueContextCommand(e.clientX, e.clientY, e.shiftKey);
     }
+  }
+
+  // ---- attack-move ------------------------------------------------------------
+  armAttackMove() {
+    if (!this.selectedUnits().some(u => u.type !== 'villager')) return;
+    this.attackMoveArmed = true;
+    this.canvas.style.cursor = 'crosshair';
+  }
+
+  disarmAttackMove() {
+    this.attackMoveArmed = false;
+    this.canvas.style.cursor = 'default';
+  }
+
+  fireAttackMove(cx, cy) {
+    this.disarmAttackMove();
+    const hit = this.pick(cx, cy);
+    const units = this.selectedUnits().filter(u => u.type !== 'villager');
+    if (!units.length || !hit) return;
+    if (hit.entity && hit.entity.owner !== PLAYER) {
+      for (const u of units) u.orderAttack(hit.entity);
+    } else {
+      const p = hit.point || (hit.node ? { x: hit.node.wx, z: hit.node.wz } : null);
+      if (!p) return;
+      for (const u of units) u.orderAttackMove(p.x, p.z);
+    }
+    this.ackFeedback(units);
+  }
+
+  // double-click an own unit: select all visible units of the same type
+  onDblClick(e) {
+    const hit = this.pick(e.clientX, e.clientY);
+    const u = hit?.entity;
+    if (!u?.isUnit || u.owner !== PLAYER) return;
+    const v = new THREE.Vector3();
+    const same = this.game.units.filter(o => {
+      if (o.owner !== PLAYER || o.dead || o.type !== u.type || o.garrisoned) return false;
+      v.set(o.x, o.group.position.y + 0.8, o.z).project(this.camera);
+      return v.z < 1 && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1;
+    });
+    if (same.length) { this.select(same); this.selectFeedback(same); }
+  }
+
+  // cycle through idle villagers (the '.' key and the HUD badge share this)
+  cycleIdleVillager() {
+    const idlers = this.game.units.filter(u => u.owner === PLAYER && u.type === 'villager' && !u.dead && u.state === 'idle' && !u.garrisoned);
+    if (!idlers.length) return;
+    this.idleVillIdx = (this.idleVillIdx + 1) % idlers.length;
+    const v = idlers[this.idleVillIdx];
+    this.select([v]);
+    this.rtsCam.jumpTo(v.x, v.z);
   }
 
   onMouseMove(e) {
@@ -406,7 +464,7 @@ export class InputController {
 
   // ---- commands ----------------------------------------------------------------------
 
-  issueContextCommand(cx, cy) {
+  issueContextCommand(cx, cy, shift = false) {
     let hit = this.pick(cx, cy);
     if (!hit) hit = {};
     // forgiveness: right-clicking near an ENEMY unit targets it — never snap
@@ -415,17 +473,24 @@ export class InputController {
       const nearFoe = this.unitNearScreen(cx, cy, 22, 1 - PLAYER);
       if (nearFoe) hit = { entity: nearFoe };
     }
-    this.dispatchContext(hit);
+    this.dispatchContext(hit, shift);
   }
 
-  // Execute a contextual command against a resolved target for the current selection.
-  dispatchContext(hit) {
+  // Execute a contextual command against a resolved target for the current
+  // selection. With shift held the command is QUEUED to run after the unit's
+  // current order finishes (waypoints, gather-then-build chains, etc).
+  dispatchContext(hit, shift = false) {
     const sel = this.selection.filter(e => !e.dead && e.owner === PLAYER);
     if (!sel.length) return;
     if (!hit || (!hit.entity && !hit.node && !hit.point)) return;
 
     const units = sel.filter(e => e.isUnit);
     const buildingsSel = sel.filter(e => e.isBuilding);
+    // per-unit issue helper honoring shift-queueing
+    const issue = (u, fn) => {
+      if (shift) u.pushOrder(fn);
+      else { u.orderQueue = null; fn(); }
+    };
 
     // Rally point for selected production buildings
     if (!units.length && buildingsSel.length) {
@@ -442,26 +507,26 @@ export class InputController {
     if (hit.entity) {
       const t = hit.entity;
       if (t.owner !== PLAYER) {
-        for (const u of units) u.orderAttack(t);
+        for (const u of units) issue(u, () => u.orderAttack(t));
         this.ackFeedback(units);
       } else if (t.isBuilding && (!t.complete || t.hp < t.maxHp - 0.5) && !t.def.isFarm) {
         // construct or repair
-        for (const u of units) if (u.type === 'villager') u.orderBuild(t);
+        for (const u of units) if (u.type === 'villager') issue(u, () => u.orderBuild(t));
         this.ackFeedback(units.filter(u => u.type === 'villager'));
       } else if (t.isBuilding && t.def.isFarm) {
         const vills = units.filter(u => u.type === 'villager');
-        for (const v of vills) v.orderGatherFarm(t);
+        for (const v of vills) issue(v, () => v.orderGatherFarm(t));
         this.ackFeedback(vills);
       } else if (t.isBuilding && t.def.dropoff) {
         for (const u of units) {
           if (u.type === 'villager' && u.carry?.amt > 0) {
             u.order = u.order?.kind === 'gather' || u.order?.kind === 'farm' ? u.order : { kind: 'gather', node: null };
             u.goDeposit();
-          } else u.orderMove(t.cx, t.cz);
+          } else issue(u, () => u.orderMove(t.cx, t.cz));
         }
         this.ackFeedback(units);
       } else {
-        for (const u of units) u.orderMove(t.isBuilding ? t.cx : t.x, t.isBuilding ? t.cz : t.z);
+        for (const u of units) issue(u, () => u.orderMove(t.isBuilding ? t.cx : t.x, t.isBuilding ? t.cz : t.z));
         this.ackFeedback(units);
       }
       return;
@@ -470,19 +535,19 @@ export class InputController {
     if (hit.node) {
       const vills = units.filter(u => u.type === 'villager');
       const rest = units.filter(u => u.type !== 'villager');
-      for (const v of vills) v.orderGather(hit.node);
-      for (const u of rest) u.orderMove(hit.node.wx, hit.node.wz);
+      for (const v of vills) issue(v, () => v.orderGather(hit.node));
+      for (const u of rest) issue(u, () => u.orderMove(hit.node.wx, hit.node.wz));
       this.ackFeedback(units);
       return;
     }
 
     if (hit.point) {
-      this.moveFormation(units, hit.point.x, hit.point.z);
+      this.moveFormation(units, hit.point.x, hit.point.z, issue);
       this.ackFeedback(units);
     }
   }
 
-  moveFormation(units, x, z) {
+  moveFormation(units, x, z, issue = (u, fn) => { u.orderQueue = null; fn(); }) {
     const n = units.length;
     const cols = Math.ceil(Math.sqrt(n));
     const spacing = 1.7;
@@ -490,7 +555,7 @@ export class InputController {
       const r = Math.floor(i / cols), c = i % cols;
       const ox = (c - (cols - 1) / 2) * spacing;
       const oz = (r - (Math.ceil(n / cols) - 1) / 2) * spacing;
-      u.orderMove(x + ox, z + oz);
+      issue(u, () => u.orderMove(x + ox, z + oz));
     });
   }
 
@@ -552,7 +617,14 @@ export class InputController {
     if (document.querySelector('.overlay:not(.hidden)')) return; // menus open
     if (e.code === 'Escape') {
       if (this.placing) this.cancelPlacement();
+      else if (this.attackMoveArmed) this.disarmAttackMove();
       else this.select([]);
+      return;
+    }
+    if (e.code === 'KeyA' && !e.ctrlKey && !e.metaKey) { this.armAttackMove(); return; }
+    if (e.code === 'KeyM') {
+      const mil = this.game.units.filter(u => u.owner === PLAYER && !u.dead && u.type !== 'villager' && !u.garrisoned);
+      if (mil.length) { this.select(mil); this.selectFeedback(mil); }
       return;
     }
     // control groups: Shift+digit assigns (Ctrl+digit is reserved by browsers
@@ -584,17 +656,11 @@ export class InputController {
       return;
     }
     if (e.code === 'Period') {
-      const idlers = this.game.units.filter(u => u.owner === PLAYER && u.type === 'villager' && !u.dead && u.state === 'idle');
-      if (idlers.length) {
-        this.idleVillIdx = (this.idleVillIdx + 1) % idlers.length;
-        const v = idlers[this.idleVillIdx];
-        this.select([v]);
-        this.rtsCam.jumpTo(v.x, v.z);
-      }
+      this.cycleIdleVillager();
       return;
     }
-    if (e.code === 'KeyT') { // stop
-      for (const u of this.selectedUnits()) u.clearOrder();
+    if (e.code === 'KeyT') { // stop (hard: clears queued orders too)
+      for (const u of this.selectedUnits()) u.clearOrder(true);
     }
   }
 }

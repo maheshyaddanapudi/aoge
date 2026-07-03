@@ -89,7 +89,7 @@ export const BUILDINGS = {
   },
   tower: {
     name: 'Watch Tower', icon: '\u{1F5FC}', age: 2,
-    cost: { wood: 60, gold: 50 }, buildTime: 16,
+    cost: { wood: 40, stone: 70 }, buildTime: 16,
     hp: 620, size: 1,
     attack: { atk: 7, range: 13, atkSpeed: 1.7 },
   },
@@ -100,7 +100,7 @@ export const BUILDINGS = {
   },
   gate: {
     name: 'Gate', icon: '\u{1F6AA}', age: 2,
-    cost: { wood: 20 }, buildTime: 6,
+    cost: { wood: 10, stone: 15 }, buildTime: 6,
     hp: 400, size: 1, isWall: true, isGate: true,
   },
   stable: {
@@ -122,38 +122,38 @@ export const BUILD_MENU = [
   'stable', 'siegeworkshop', 'towncenter',
 ];
 
+export const RESOURCE_KINDS = ['wood', 'food', 'gold', 'stone'];
+
 export const RESOURCE_NODES = {
   tree:  { name: 'Tree', res: 'wood', amount: 110 },
   berry: { name: 'Berry Bush', res: 'food', amount: 160 },
   gold:  { name: 'Gold Mine', res: 'gold', amount: 850 },
+  stone: { name: 'Stone Mine', res: 'stone', amount: 700 },
 };
 
-export const START_RESOURCES = { wood: 220, food: 220, gold: 120 };
+export const START_RESOURCES = { wood: 220, food: 220, gold: 120, stone: 80 };
 
 export function costText(cost) {
   if (!cost) return '';
   const parts = [];
-  if (cost.wood) parts.push(`${cost.wood}\u{1F6B5}`.replace('\u{1F6B5}', 'W'));
+  if (cost.wood) parts.push(`${cost.wood}W`);
   if (cost.food) parts.push(`${cost.food}F`);
   if (cost.gold) parts.push(`${cost.gold}G`);
+  if (cost.stone) parts.push(`${cost.stone}S`);
   return parts.join(' ');
 }
 
 export function canAfford(res, cost) {
   if (!cost) return true;
-  return (res.wood >= (cost.wood || 0)) && (res.food >= (cost.food || 0)) && (res.gold >= (cost.gold || 0));
+  return RESOURCE_KINDS.every(k => (res[k] || 0) >= (cost[k] || 0));
 }
 
 export function payCost(res, cost) {
   if (!cost) return;
-  res.wood -= cost.wood || 0;
-  res.food -= cost.food || 0;
-  res.gold -= cost.gold || 0;
+  for (const k of RESOURCE_KINDS) res[k] = (res[k] || 0) - (cost[k] || 0);
 }
 
 export function refundCost(res, cost) {
   if (!cost) return;
-  res.wood += cost.wood || 0;
-  res.food += cost.food || 0;
-  res.gold += cost.gold || 0;
+  for (const k of RESOURCE_KINDS) res[k] = (res[k] || 0) + (cost[k] || 0);
 }

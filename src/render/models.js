@@ -756,6 +756,25 @@ export function makeGoldMine() {
   return g;
 }
 
+export function makeStoneMine() {
+  const g = new THREE.Group();
+  // pale angular slabs, clearly distinct from the gold-flecked mine
+  const rock = sphere(0.9, 0xb9b6ac, 0);
+  rock.scale.set(1.15, 0.8, 1);
+  rock.position.y = 0.42;
+  rock.rotation.y = 1.1;
+  g.add(rock);
+  const rock2 = sphere(0.62, 0xa5a29a, 0);
+  rock2.position.set(-0.55, 0.35, 0.35);
+  rock2.rotation.y = 0.4;
+  g.add(rock2);
+  const slab = box(0.7, 0.35, 0.5, 0xc4c1b6);
+  slab.position.set(0.5, 0.2, -0.5);
+  slab.rotation.y = 0.7;
+  g.add(slab);
+  return g;
+}
+
 export function makeStump() {
   const s = cyl(0.22, 0.3, 0.4, C.woodDark, 6);
   s.position.y = 0.2;

@@ -6,13 +6,16 @@ import { PLAYER, WORLD, TILE } from '../config.js';
 import { WATER_LEVEL } from '../world/map.js';
 
 export class Minimap {
-  constructor(canvas, game, rtsCam, camera) {
+  constructor(canvas, game, rtsCam, camera, input = null) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.game = game;
     this.rtsCam = rtsCam;
     this.camera = camera;
+    this.input = input;
+    this.pings = []; // {x, z, t} — flashing attack indicators
     this.S = canvas.width; // square
+    game.onPing = (x, z) => this.pings.push({ x, z, t: 0 });
 
     this.terrainLayer = document.createElement('canvas');
     this.terrainLayer.width = this.S;
@@ -34,10 +37,22 @@ export class Minimap {
       this.rtsCam.jumpTo(x, z);
     };
     let down = false;
-    canvas.addEventListener('mousedown', (e) => { if (e.button === 0) { down = true; moveCam(e); } });
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { down = true; moveCam(e); }
+      else if (e.button === 2 && this.input) {
+        // right-click on the minimap commands the selection there
+        const r = canvas.getBoundingClientRect();
+        const x = (e.clientX - r.left) / r.width * WORLD;
+        const z = (e.clientY - r.top) / r.height * WORLD;
+        this.input.dispatchContext({ point: { x, y: 0, z } }, e.shiftKey);
+      }
+    });
     window.addEventListener('mousemove', (e) => { if (down) moveCam(e); });
     window.addEventListener('mouseup', () => { down = false; });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // touch: drag scrolls the camera
+    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); if (e.touches[0]) moveCam(e.touches[0]); }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => { e.preventDefault(); if (e.touches[0]) moveCam(e.touches[0]); }, { passive: false });
   }
 
   renderTerrain() {
@@ -69,7 +84,7 @@ export class Minimap {
     const k = this.S / WORLD;
     for (const n of this.game.nodes) {
       if (n.dead) continue;
-      ctx.fillStyle = n.type === 'tree' ? '#1e4d20' : n.type === 'gold' ? '#e8b923' : '#b03333';
+      ctx.fillStyle = n.type === 'tree' ? '#1e4d20' : n.type === 'gold' ? '#e8b923' : n.type === 'stone' ? '#b8b5aa' : '#b03333';
       ctx.fillRect(n.wx * k - 1.5, n.wz * k - 1.5, 3, 3);
     }
   }
@@ -101,6 +116,19 @@ export class Minimap {
       if (u.dead) continue;
       ctx.fillStyle = u.owner === PLAYER ? '#7db8ff' : '#ff7a6e';
       ctx.fillRect(u.x * k - 1.5, u.z * k - 1.5, 3, 3);
+    }
+
+    // attack pings: expanding red rings
+    for (let i = this.pings.length - 1; i >= 0; i--) {
+      const p = this.pings[i];
+      p.t += dt + 0.08;
+      if (p.t > 3) { this.pings.splice(i, 1); continue; }
+      const phase = (p.t % 1);
+      ctx.strokeStyle = `rgba(255,60,40,${1 - phase})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(p.x * k, p.z * k, 3 + phase * 10, 0, Math.PI * 2);
+      ctx.stroke();
     }
 
     // camera frustum footprint

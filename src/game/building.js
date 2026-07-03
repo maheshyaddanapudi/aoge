@@ -251,7 +251,9 @@ export class Building {
         this.atkCd = atk.atkSpeed;
         const from = this.pos3();
         from.y += this.type === 'tower' ? 5.4 : 6.5;
-        this.game.effects.fireArrow(from, this.atkTarget, atk.atk, this);
+        // garrisoned villagers add arrows (+40% damage each)
+        const extra = 1 + (this.garrison?.length || 0) * 0.4;
+        this.game.effects.fireArrow(from, this.atkTarget, Math.round(atk.atk * extra), this);
         this.game.sound('arrow');
       }
     }
