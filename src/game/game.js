@@ -19,6 +19,7 @@ export class Game {
     this.trees = treeRenderer;
     this.effects = null;   // set by main after construction
     this.ai = null;
+    this.fog = null;       // set by main; player-view visibility grid
     this.time = 0;
     this.gameOver = false;
 
@@ -503,6 +504,7 @@ export class Game {
     bs.length = 0; for (const b of this.buildings) bs.push(b);
     for (const b of bs) if (!b.dead) b.update(dt);
     if (this.ai) this.ai.update(dt);
+    this.fog?.update(this, dt);
     this.effects.update(dt);
   }
 
@@ -518,9 +520,11 @@ export class Game {
     if (this.gameOver || this.time < 5) return;
     if (this.sideDefeated(ENEMY)) {
       this.gameOver = true;
+      this.fog?.revealAll();
       this.onGameOver(true);
     } else if (this.sideDefeated(PLAYER)) {
       this.gameOver = true;
+      this.fog?.revealAll();
       this.onGameOver(false);
     }
   }

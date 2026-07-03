@@ -27,6 +27,15 @@ export class Minimap {
     this.nodeLayer.height = this.S;
     this.renderNodes();
 
+    // fog overlay: per-tile ImageData scaled up to minimap size
+    this.fogV = -1;
+    this.fogLayer = document.createElement('canvas');
+    this.fogLayer.width = this.fogLayer.height = this.S;
+    this.fogSmall = document.createElement('canvas');
+    const ms = game.map.size;
+    this.fogSmall.width = this.fogSmall.height = ms;
+    this.fogImg = this.fogSmall.getContext('2d').createImageData(ms, ms);
+
     this.raycaster = new THREE.Raycaster();
     this.groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 
@@ -82,11 +91,28 @@ export class Minimap {
     const ctx = this.nodeLayer.getContext('2d');
     ctx.clearRect(0, 0, this.S, this.S);
     const k = this.S / WORLD;
+    const fog = this.game.fog;
     for (const n of this.game.nodes) {
       if (n.dead) continue;
+      if (fog && !fog.exploredWorld(n.wx, n.wz)) continue;
       ctx.fillStyle = n.type === 'tree' ? '#1e4d20' : n.type === 'gold' ? '#e8b923' : n.type === 'stone' ? '#b8b5aa' : '#b03333';
       ctx.fillRect(n.wx * k - 1.5, n.wz * k - 1.5, 3, 3);
     }
+  }
+
+  renderFog() {
+    const fog = this.game.fog;
+    const ms = fog.size, d = this.fogImg.data, st = fog.state;
+    const revealed = fog.revealed;
+    for (let i = 0; i < st.length; i++) {
+      d[i * 4 + 3] = revealed ? 0 : st[i] === 2 ? 0 : st[i] === 1 ? 96 : 235;
+    }
+    const sctx = this.fogSmall.getContext('2d');
+    sctx.putImageData(this.fogImg, 0, 0);
+    const fctx = this.fogLayer.getContext('2d');
+    fctx.clearRect(0, 0, this.S, this.S);
+    fctx.imageSmoothingEnabled = true;
+    fctx.drawImage(this.fogSmall, 0, 0, this.S, this.S);
   }
 
   update(dt) {
@@ -104,18 +130,27 @@ export class Minimap {
     ctx.drawImage(this.nodeLayer, 0, 0);
 
     const k = S / WORLD;
-    // buildings as squares
+    const fog = this.game.fog;
+    // buildings as squares (enemy: only once explored)
     for (const b of this.game.buildings) {
       if (b.dead) continue;
+      if (fog && b.owner !== PLAYER && !fog.exploredWorld(b.cx, b.cz)) continue;
       ctx.fillStyle = b.owner === PLAYER ? '#4d8df5' : '#e8473a';
       const s = Math.max(3, b.size * TILE * k);
       ctx.fillRect(b.cx * k - s / 2, b.cz * k - s / 2, s, s);
     }
-    // units as dots
+    // units as dots (enemy: only while visible)
     for (const u of this.game.units) {
       if (u.dead) continue;
+      if (fog && u.owner !== PLAYER && !fog.visibleWorld(u.x, u.z)) continue;
       ctx.fillStyle = u.owner === PLAYER ? '#7db8ff' : '#ff7a6e';
       ctx.fillRect(u.x * k - 1.5, u.z * k - 1.5, 3, 3);
+    }
+
+    // fog shroud
+    if (fog && fog.enabled) {
+      if (this.fogV !== fog.version) { this.fogV = fog.version; this.renderFog(); }
+      ctx.drawImage(this.fogLayer, 0, 0);
     }
 
     // attack pings: expanding red rings

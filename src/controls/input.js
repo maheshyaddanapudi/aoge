@@ -235,10 +235,12 @@ export class InputController {
     this.setRayFrom(clientX, clientY);
     const game = this.game;
 
+    // fog-hidden (and garrisoned) entities are invisible but would still be
+    // raycast-hit, so filter them out of the pick set
     const roots = [];
-    for (const u of game.units) roots.push(u.group);
-    for (const b of game.buildings) roots.push(b.group);
-    for (const n of game.nodes) if (n.mesh) roots.push(n.mesh);
+    for (const u of game.units) if (u.group.visible) roots.push(u.group);
+    for (const b of game.buildings) if (b.group.visible) roots.push(b.group);
+    for (const n of game.nodes) if (n.mesh && n.mesh.visible) roots.push(n.mesh);
     const hits = this.raycaster.intersectObjects(roots, true);
 
     // instanced trees
@@ -500,7 +502,7 @@ export class InputController {
     const v = new THREE.Vector3();
     let best = null, bestD = maxPx * maxPx;
     for (const u of this.game.units) {
-      if (u.dead) continue;
+      if (u.dead || !u.group.visible) continue;
       if (ownerFilter !== null && u.owner !== ownerFilter) continue;
       v.set(u.x, u.group.position.y + 0.9, u.z).project(this.camera);
       if (v.z >= 1) continue;

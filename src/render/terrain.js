@@ -272,14 +272,26 @@ export class TreeRenderer {
         part.inst.setColorAt(idx, this.tmpC);
       }
     }
-    return { idx, species: sp };
+    return { idx, species: sp, matrix: this.tmpM.clone(), hidden: false };
   }
 
   remove(handle) {
     if (!handle) return;
+    handle.matrix = null; // chopped: fog un-hiding must not resurrect it
     // touch only the removed tree's own species meshes, not all 16
     for (const part of handle.species.parts) {
       part.inst.setMatrixAt(handle.idx, this.zero);
+      part.inst.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  // Fog of war: zero-scale hidden trees (degenerate triangles also drop out
+  // of raycasts), restore the stored matrix when re-explored.
+  setHidden(handle, hidden) {
+    if (!handle || !handle.matrix || handle.hidden === hidden) return;
+    handle.hidden = hidden;
+    for (const part of handle.species.parts) {
+      part.inst.setMatrixAt(handle.idx, hidden ? this.zero : handle.matrix);
       part.inst.instanceMatrix.needsUpdate = true;
     }
   }

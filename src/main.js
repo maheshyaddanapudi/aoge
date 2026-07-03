@@ -8,6 +8,8 @@ import { buildTerrain, TreeRenderer } from './render/terrain.js';
 import { Effects } from './render/effects.js';
 import { Game } from './game/game.js';
 import { AI } from './game/ai.js';
+import { Fog } from './game/fog.js';
+import { FogRenderer } from './render/fog.js';
 import { RTSCamera } from './controls/camera.js';
 import { InputController } from './controls/input.js';
 import { HUD } from './ui/hud.js';
@@ -76,6 +78,33 @@ game.recalcPop(ENEMY);
 
 const [aiGx, aiGy] = starts[1];
 game.ai = new AI(game, aiGx, aiGy);
+
+// --- fog of war ---------------------------------------------------------------
+const fog = new Fog(map);
+game.fog = fog;
+if (new URLSearchParams(location.search).has('nofog')) fog.revealAll();
+fog.recompute(game); // reveal the home base before the first frame
+const fogRenderer = new FogRenderer(scene, map, fog);
+
+// Hide enemy units (visible tiles only), enemy buildings / resource nodes /
+// trees (explored tiles) from the player's view. Runs when fog changes.
+function applyFogVisibility() {
+  for (const u of game.units) {
+    if (u.owner === PLAYER || u.dead) continue;
+    u.group.visible = !u.garrisoned && fog.visibleWorld(u.x, u.z);
+  }
+  for (const b of game.buildings) {
+    if (b.owner === PLAYER || b.dead) continue;
+    b.group.visible = fog.exploredWorld(b.cx, b.cz);
+  }
+  for (const n of game.nodes) {
+    if (n.dead) continue;
+    const vis = fog.exploredWorld(n.wx, n.wz);
+    if (n.mesh) n.mesh.visible = vis;
+    else if (n.treeHandle) trees.setHidden(n.treeHandle, !vis);
+  }
+}
+applyFogVisibility();
 
 // Optional CC0 building pack: swap in models once loaded (no-op if absent).
 loadPack();
@@ -160,6 +189,11 @@ function frame() {
   if (running && !paused) for (let i = 0; i < gameSpeed; i++) game.update(dt);
   rtsCam.update(dt);
   updateSun(rtsCam.smoothTarget, rtsCam.smoothDist);
+  if (fog.dirty) {
+    fogRenderer.refresh();
+    applyFogVisibility();
+    fog.dirty = false;
+  }
   hud.update(dt);
   minimap.update(dt);
   updateRallyFlag();
