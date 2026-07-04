@@ -2,7 +2,7 @@
 // (encoded in the URL), so a save only carries mutable sim state — player
 // economies, entities, node depletion, fog exploration and match stats.
 
-import { TECHS, SIZE_NAME, BIOME_NAME, NUM_ENEMIES } from '../config.js';
+import { TECHS, SIZE_NAME, BIOME_NAME, NUM_ENEMIES, SCENARIO_NAME } from '../config.js';
 
 const KEY = 'aoge-save';
 
@@ -13,6 +13,7 @@ export function saveGame(game, difficulty) {
     size: SIZE_NAME,
     biome: BIOME_NAME,
     foes: String(NUM_ENEMIES),
+    scenario: SCENARIO_NAME || '',
     difficulty,
     time: game.time,
     savedAt: Date.now(),

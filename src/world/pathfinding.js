@@ -48,20 +48,34 @@ const DIRS = [
  * nearest reachable tile around it. Returns array of [gx, gy] (excluding start),
  * or null if nothing reachable.
  */
-export function findPath(map, sx, sy, tx, ty, maxIter = 9000, owner = -1) {
+export function findPath(map, sx, sy, tx, ty, maxIter = 9000, owner = -1, domain = 'land') {
   const size = map.size;
-  // per-owner passability: open ground, or the owner's own gate tiles
-  const open = (i) => map.walk[i] === 1 || (owner >= 0 && map.gateOwner[i] === owner);
+  // per-owner passability: open ground (or the owner's own gate tiles);
+  // boats navigate the inverse grid
+  const water = domain === 'water';
+  const open = water
+    ? (i) => map.waterWalk[i] === 1
+    : (i) => map.walk[i] === 1 || (owner >= 0 && map.gateOwner[i] === owner);
+  const nearestOpen = (gx, gy, r) => {
+    if (!water) return map.nearestWalkable(gx, gy, r);
+    for (let rad = 0; rad <= r; rad++) {
+      for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue;
+        if (map.isWater(gx + dx, gy + dy)) return [gx + dx, gy + dy];
+      }
+    }
+    return null;
+  };
   if (!map.inBounds(sx, sy)) return null;
   if (!open(sy * size + sx)) {
-    const fix = map.nearestWalkable(sx, sy, 4);
+    const fix = nearestOpen(sx, sy, 4);
     if (!fix) return null;
     [sx, sy] = fix;
   }
   let goalBlocked = false;
   if (!map.inBounds(tx, ty) || !open(ty * size + tx)) {
     goalBlocked = true;
-    const fix = map.nearestWalkable(tx, ty, 12);
+    const fix = nearestOpen(tx, ty, 12);
     if (!fix) return null;
     [tx, ty] = fix;
   }
@@ -133,12 +147,14 @@ export function findPath(map, sx, sy, tx, ty, maxIter = 9000, owner = -1) {
     i = parentGet(i);
   }
   path.reverse();
-  return smoothPath(map, sx, sy, path, owner);
+  return smoothPath(map, sx, sy, path, owner, domain);
 }
 
 // Bresenham walkability check between tile centers.
-export function lineWalkable(map, x0, y0, x1, y1, owner = -1) {
-  const ok = (x, y) => owner >= 0 ? map.isWalkableFor(x, y, owner) : map.isWalkable(x, y);
+export function lineWalkable(map, x0, y0, x1, y1, owner = -1, domain = 'land') {
+  const ok = domain === 'water'
+    ? (x, y) => map.isWater(x, y)
+    : (x, y) => owner >= 0 ? map.isWalkableFor(x, y, owner) : map.isWalkable(x, y);
   let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
   const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
   let err = dx - dy;
@@ -156,7 +172,7 @@ export function lineWalkable(map, x0, y0, x1, y1, owner = -1) {
   }
 }
 
-function smoothPath(map, sx, sy, path, owner = -1) {
+function smoothPath(map, sx, sy, path, owner = -1, domain = 'land') {
   if (path.length < 3) return path;
   const out = [];
   let ax = sx, ay = sy;
@@ -166,7 +182,7 @@ function smoothPath(map, sx, sy, path, owner = -1) {
     let j = i;
     for (let k = path.length - 1; k > i; k--) {
       if (k - i > 40) continue; // cap LOS scan length
-      if (lineWalkable(map, ax, ay, path[k][0], path[k][1], owner)) { j = k; break; }
+      if (lineWalkable(map, ax, ay, path[k][0], path[k][1], owner, domain)) { j = k; break; }
     }
     out.push(path[j]);
     [ax, ay] = path[j];

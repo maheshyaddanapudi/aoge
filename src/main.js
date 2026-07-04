@@ -1,7 +1,7 @@
 // Bootstrap: build the world, spawn starting bases, run the game loop.
 
 import * as THREE from 'three';
-import { TILE, PLAYER, MAP_SEED, NUM_ENEMIES, SIZE_NAME, BIOME_NAME } from './config.js';
+import { TILE, PLAYER, MAP_SEED, NUM_ENEMIES, SIZE_NAME, BIOME_NAME, SCENARIOS, SCENARIO_NAME } from './config.js';
 import { GameMap, generateResources, pickStartLocations } from './world/map.js';
 import { createScene } from './render/scene.js';
 import { buildTerrain, TreeRenderer } from './render/terrain.js';
@@ -41,6 +41,7 @@ const trees = new TreeRenderer(scene, 1000);
 await trees.load();
 
 const game = new Game(scene, map, trees);
+if (SCENARIO_NAME) game.scenario = SCENARIOS[SCENARIO_NAME];
 game.effects = new Effects(scene, game);
 game.soundFn = playSound;
 game.onCombat = combatPulse;
@@ -177,6 +178,24 @@ document.getElementById('mute-btn').addEventListener('click', (e) => {
 let running = false;
 const clock = new THREE.Clock();
 
+// Scenario objective banner under the top bar (with countdown when timed).
+let objT = 0;
+const objEl = document.getElementById('objective');
+function updateObjective(dt) {
+  if (!game.scenario || !objEl) return;
+  objT -= dt;
+  if (objT > 0) return;
+  objT = 0.5;
+  const sc = game.scenario;
+  objEl.classList.remove('hidden');
+  let txt = `${sc.icon} ${sc.name} — ${sc.desc}`;
+  if (sc.timeLimit) {
+    const left = Math.max(0, sc.timeLimit - game.time);
+    txt += ` (${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')} left)`;
+  }
+  objEl.textContent = txt;
+}
+
 // Rally flag: shown at the rally point while a single own production
 // building is selected.
 import { makeBanner } from './render/models.js';
@@ -246,6 +265,7 @@ function frame() {
   }
   hud.update(dt);
   minimap.update(dt);
+  updateObjective(dt);
   updateRallyFlag();
   waterT += dt;
   waterNormalTex.offset.set(waterT * 0.012, waterT * 0.009);
@@ -302,14 +322,19 @@ const optBiome = document.getElementById('opt-biome');
 const optFoes = document.getElementById('opt-foes');
 if (optSize) {
   optSize.value = SIZE_NAME; optBiome.value = BIOME_NAME; optFoes.value = String(NUM_ENEMIES);
+  const optMode = document.getElementById('opt-mode');
+  if (optMode) optMode.value = SCENARIO_NAME || '';
   const reloadWith = (newSeed) => {
     const q = new URLSearchParams();
     q.set('size', optSize.value); q.set('biome', optBiome.value); q.set('foes', optFoes.value);
     q.set('seed', (newSeed ? (Math.random() * 1e9 | 0) : map.seed).toString(36));
+    if (optMode?.value) q.set('scenario', optMode.value);
     if (params.has('lite')) q.set('lite', '');
     location.search = q.toString();
   };
-  for (const el of [optSize, optBiome, optFoes]) el.addEventListener('change', () => reloadWith(false));
+  for (const el of [optSize, optBiome, optFoes, optMode].filter(Boolean)) {
+    el.addEventListener('change', () => reloadWith(false));
+  }
   document.getElementById('opt-newmap').addEventListener('click', () => reloadWith(true));
 }
 
@@ -324,6 +349,7 @@ if (savedMeta && resumeBtn && !RESTORE && !REPLAY) {
     q.set('load', '1');
     q.set('seed', savedMeta.seed); q.set('size', savedMeta.size);
     q.set('biome', savedMeta.biome); q.set('foes', savedMeta.foes);
+    if (savedMeta.scenario) q.set('scenario', savedMeta.scenario);
     if (params.has('lite')) q.set('lite', '');
     location.search = q.toString();
   });
@@ -352,7 +378,8 @@ game.onGameOver = (won) => {
     try {
       localStorage.setItem('aoge-replay', JSON.stringify({
         seed: map.seed.toString(36), size: SIZE_NAME, biome: BIOME_NAME,
-        foes: String(NUM_ENEMIES), difficulty: currentDifficulty, log: game.cmdLog,
+        foes: String(NUM_ENEMIES), scenario: SCENARIO_NAME || '',
+        difficulty: currentDifficulty, log: game.cmdLog,
       }));
     } catch { /* quota — replay just won't be available */ }
   }
@@ -365,6 +392,7 @@ document.getElementById('replay-btn')?.addEventListener('click', () => {
   const q = new URLSearchParams();
   q.set('replay', '1'); q.set('seed', r.seed); q.set('size', r.size);
   q.set('biome', r.biome); q.set('foes', r.foes);
+  if (r.scenario) q.set('scenario', r.scenario);
   location.search = q.toString();
 });
 

@@ -284,9 +284,11 @@ export class Building {
     return Math.hypot(tx - this.cx, tz - this.cz) > this.def.attack.range + 1;
   }
 
-  // Where trained units appear: free tile next to the footprint, biased toward rally.
-  spawnPoint() {
+  // Where trained units appear: free tile next to the footprint, biased toward
+  // rally. Docks launch boats onto water tiles instead of land.
+  spawnPoint(domain = 'land') {
     const map = this.game.map;
+    const water = domain === 'water';
     const rx = this.rally?.x ?? this.cx;
     const rz = this.rally?.z ?? this.cz + (this.size + 1) * TILE;
     let best = null, bestD = Infinity;
@@ -294,7 +296,7 @@ export class Building {
       for (let y = this.gy - 1 - r; y <= this.gy + this.size + r; y++) {
         for (let x = this.gx - 1 - r; x <= this.gx + this.size + r; x++) {
           const onRim = x < this.gx - r || x >= this.gx + this.size + r || y < this.gy - r || y >= this.gy + this.size + r;
-          if (!onRim || !map.isWalkable(x, y)) continue;
+          if (!onRim || !(water ? map.isWater(x, y) : map.isWalkable(x, y))) continue;
           const [wx, wz] = map.gridToWorld(x, y);
           const d = Math.hypot(wx - rx, wz - rz);
           if (d < bestD) { bestD = d; best = [wx, wz]; }

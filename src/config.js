@@ -69,6 +69,12 @@ export const UNITS = {
     hp: 110, atk: 12, range: 0.9, atkSpeed: 1.5, speed: 7.2, aggro: 12,
     cavalry: true,
   },
+  fishingboat: {
+    name: 'Fishing Boat', icon: '\u{1F6A3}', age: 2,
+    cost: { wood: 60 }, trainTime: 11,
+    hp: 45, atk: 0, range: 0.6, atkSpeed: 1, speed: 5.6, aggro: 0,
+    gatherRate: 1.6, domain: 'water', gathers: ['fish'], carry: 15,
+  },
   catapult: {
     name: 'Catapult', icon: '\u{1FA93}', age: 4,
     cost: { wood: 140, gold: 80 }, trainTime: 18,
@@ -126,6 +132,11 @@ export const BUILDINGS = {
     cost: { wood: 10, stone: 15 }, buildTime: 6,
     hp: 400, size: 1, isWall: true, isGate: true,
   },
+  dock: {
+    name: 'Dock', icon: '⚓', age: 2,
+    cost: { wood: 100 }, buildTime: 15,
+    hp: 550, size: 2, dropoff: true, isDock: true, trains: ['fishingboat'],
+  },
   blacksmith: {
     name: 'Blacksmith', icon: '⚒️', age: 2,
     cost: { wood: 120 }, buildTime: 16,
@@ -152,7 +163,7 @@ export const BUILDINGS = {
 export const BUILD_MENU = [
   'house', 'storehouse', 'farm', 'barracks',
   'archeryrange', 'tower', 'wall', 'gate',
-  'blacksmith', 'market', 'stable', 'siegeworkshop', 'towncenter',
+  'blacksmith', 'market', 'dock', 'stable', 'siegeworkshop', 'towncenter',
 ];
 
 // Blacksmith research: one-shot upgrades applied via player.mods multipliers.
@@ -173,7 +184,32 @@ export const RESOURCE_NODES = {
   berry: { name: 'Berry Bush', res: 'food', amount: 160 },
   gold:  { name: 'Gold Mine', res: 'gold', amount: 850 },
   stone: { name: 'Stone Mine', res: 'stone', amount: 700 },
+  fish:  { name: 'Fish School', res: 'food', amount: 380 },
 };
+
+// Scenario objectives (?scenario=<id>): alternate win conditions layered on
+// top of the base annihilation rules.
+export const SCENARIOS = {
+  blitz: {
+    name: 'Lightning War', icon: '⚡',
+    desc: 'Destroy every enemy Town Center within 12 minutes.',
+    timeLimit: 720, timeout: 'lose',
+    win: (g) => !g.buildings.some(b => b.owner !== 0 && !b.dead && b.type === 'towncenter'),
+  },
+  survive: {
+    name: 'Hold the Line', icon: '🛡️',
+    desc: 'Survive the enemy assault for 10 minutes.',
+    timeLimit: 600, timeout: 'win', win: null,
+  },
+  tycoon: {
+    name: 'Golden Age', icon: '👑',
+    desc: 'Amass 2,000 gold in your treasury.',
+    timeLimit: null, timeout: null,
+    win: (g) => g.players[0].res.gold >= 2000,
+  },
+};
+const scq = q.get('scenario');
+export const SCENARIO_NAME = SCENARIOS[scq] ? scq : null;
 
 export const START_RESOURCES = { wood: 220, food: 220, gold: 120, stone: 80 };
 

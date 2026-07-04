@@ -644,7 +644,8 @@ export class InputController {
     const wz = (gy + p.def.size / 2) * TILE;
     p.ghost.visible = true;
     p.ghost.position.set(wx, map.heightAt(wx, wz), wz);
-    p.valid = this.game.canPlaceBuilding(gx, gy, p.def.size);
+    p.valid = this.game.canPlaceBuilding(gx, gy, p.def.size) &&
+      (!p.def.isDock || this.game.map.hasAdjacentWater(gx, gy, p.def.size));
     p.ghostMat.color.setHex(p.valid ? 0x4dff5e : 0xff4030);
   }
 

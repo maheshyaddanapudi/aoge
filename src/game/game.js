@@ -10,7 +10,7 @@ import {
 import { Unit } from './unit.js';
 import { Building } from './building.js';
 import { execCommand } from './commands.js';
-import { makeBerryBush, makeGoldMine, makeStoneMine, mat, C } from '../render/models.js';
+import { makeBerryBush, makeGoldMine, makeStoneMine, makeFishSchool, mat, C } from '../render/models.js';
 
 let NODE_ID = 1;
 
@@ -128,8 +128,11 @@ export class Game {
         node.treeHandle = this.trees.add(wx, y - 0.1, wz, rand());
         if (node.treeHandle) this.treeNodeByInstance.set(node.treeHandle.idx, node);
       } else {
-        const mesh = d.type === 'berry' ? makeBerryBush() : d.type === 'stone' ? makeStoneMine() : makeGoldMine();
-        mesh.position.set(wx, y - 0.05, wz);
+        const mesh = d.type === 'berry' ? makeBerryBush()
+          : d.type === 'stone' ? makeStoneMine()
+          : d.type === 'fish' ? makeFishSchool()
+          : makeGoldMine();
+        mesh.position.set(wx, d.type === 'fish' ? -0.55 : y - 0.05, wz);
         mesh.rotation.y = rand() * Math.PI * 2;
         mesh.userData.node = node;
         this.scene.add(mesh);
@@ -152,7 +155,7 @@ export class Game {
   }
 
   spawnFromBuilding(building, unitType) {
-    const [x, z] = building.spawnPoint();
+    const [x, z] = building.spawnPoint(UNITS[unitType].domain || 'land');
     const u = this.spawnUnit(unitType, building.owner, x, z);
     this.stats[building.owner].trained++;
     const r = building.rally;
@@ -192,6 +195,7 @@ export class Game {
       if (p.age < def.age) return null;
       if (!canAfford(p.res, def.cost)) return null;
       if (!this.canPlaceBuilding(gx, gy, def.size)) return null;
+      if (def.isDock && !this.map.hasAdjacentWater(gx, gy, def.size)) return null;
       payCost(p.res, def.cost);
     }
     const b = new Building(this, type, owner, gx, gy, prebuilt);
@@ -475,10 +479,11 @@ export class Game {
 
   // ---- queries -------------------------------------------------------------------
 
-  findDropoff(owner, x, z) {
+  findDropoff(owner, x, z, dockOnly = false) {
     let best = null, bestD = Infinity;
     for (const b of this.buildings) {
       if (b.owner !== owner || !b.complete || b.dead || !b.def.dropoff) continue;
+      if (dockOnly && !b.def.isDock) continue;
       const d = Math.hypot(b.cx - x, b.cz - z);
       if (d < bestD) { bestD = d; best = b; }
     }
@@ -622,6 +627,10 @@ export class Game {
     for (const ai of this.ais) ai.update(dt);
     this.fog?.update(this, dt);
     this.effects.update(dt);
+    if (this.scenario) {
+      this._scT = (this._scT || 0) - dt;
+      if (this._scT <= 0) { this._scT = 1; this.checkScenario(); }
+    }
     this.tick++;
     this.onTick?.();
   }
@@ -632,6 +641,22 @@ export class Game {
   sideDefeated(owner) {
     if (this.countBuildings(owner) > 0) return false;
     return !this.units.some(u => u.owner === owner && !u.dead && u.type === 'villager');
+  }
+
+  // Scenario objectives (?scenario=): custom win / timed conditions layered
+  // over the base rules. Evaluated once per second from update().
+  checkScenario() {
+    const sc = this.scenario;
+    if (!sc || this.gameOver || this.time < 5) return;
+    if (sc.win && sc.win(this)) {
+      this.gameOver = true;
+      this.fog?.revealAll();
+      this.onGameOver(true);
+    } else if (sc.timeLimit && this.time >= sc.timeLimit && sc.timeout) {
+      this.gameOver = true;
+      this.fog?.revealAll();
+      this.onGameOver(sc.timeout === 'win');
+    }
   }
 
   checkWinLose() {

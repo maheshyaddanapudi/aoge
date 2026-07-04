@@ -95,7 +95,7 @@ export class Minimap {
     for (const n of this.game.nodes) {
       if (n.dead) continue;
       if (fog && !fog.exploredWorld(n.wx, n.wz)) continue;
-      ctx.fillStyle = n.type === 'tree' ? '#1e4d20' : n.type === 'gold' ? '#e8b923' : n.type === 'stone' ? '#b8b5aa' : '#b03333';
+      ctx.fillStyle = n.type === 'tree' ? '#1e4d20' : n.type === 'gold' ? '#e8b923' : n.type === 'stone' ? '#b8b5aa' : n.type === 'fish' ? '#6fd4e8' : '#b03333';
       ctx.fillRect(n.wx * k - 1.5, n.wz * k - 1.5, 3, 3);
     }
   }

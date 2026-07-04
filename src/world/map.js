@@ -39,6 +39,7 @@ export class GameMap {
     // walk: 1 = walkable. occupant: entity occupying a tile (building/resource), or null.
     // gateOwner: player id whose units may pass this tile even though walk=0 (gates).
     this.walk = new Uint8Array(this.size * this.size);
+    this.waterWalk = new Uint8Array(this.size * this.size); // boat navigation
     this.occupant = new Array(this.size * this.size).fill(null);
     this.gateOwner = new Int8Array(this.size * this.size).fill(-1);
 
@@ -46,6 +47,7 @@ export class GameMap {
       for (let gx = 0; gx < this.size; gx++) {
         const h = this.tileHeight(gx, gy);
         this.walk[gy * this.size + gx] = h > WATER_LEVEL ? 1 : 0;
+        this.waterWalk[gy * this.size + gx] = h <= WATER_LEVEL ? 1 : 0;
       }
     }
     this.version = 0; // bumped whenever walkability changes (repath hint)
@@ -80,6 +82,23 @@ export class GameMap {
   isWalkable(gx, gy) {
     if (!this.inBounds(gx, gy)) return false;
     return this.walk[gy * this.size + gx] === 1;
+  }
+
+  isWater(gx, gy) {
+    if (!this.inBounds(gx, gy)) return false;
+    return this.waterWalk[gy * this.size + gx] === 1;
+  }
+
+  // Dock rule: footprint on land, but at least one tile of the surrounding
+  // ring must be open water so boats can launch.
+  hasAdjacentWater(gx, gy, size) {
+    for (let y = gy - 1; y <= gy + size; y++) {
+      for (let x = gx - 1; x <= gx + size; x++) {
+        if (y >= gy && y < gy + size && x >= gx && x < gx + size) continue;
+        if (this.isWater(x, y)) return true;
+      }
+    }
+    return false;
   }
 
   occupantAt(gx, gy) {
@@ -205,6 +224,21 @@ export function generateResources(map, starts, lite = false) {
     for (let k = 0; k < 4; k++) {
       tryPlace(cx + (k % 2), cy + Math.floor(k / 2), 'stone');
     }
+  }
+
+  // Fish schools in deep water (fished by boats from a dock).
+  const deep = [];
+  for (let gy = 4; gy < size - 4; gy += 2) {
+    for (let gx = 4; gx < size - 4; gx += 2) {
+      if (map.tileHeight(gx, gy) <= WATER_LEVEL - 0.3) deep.push([gx, gy]);
+    }
+  }
+  const fishCount = Math.min(14, Math.floor(deep.length / 6));
+  for (let f = 0; f < fishCount; f++) {
+    const [gx, gy] = deep[Math.floor(rand() * deep.length)];
+    if (map.occupantAt(gx, gy)) continue;
+    out.push({ type: 'fish', gx, gy });
+    map.occupant[gy * size + gx] = { isResourceReservation: true, type: 'fish' };
   }
 
   // Berry patches.

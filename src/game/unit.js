@@ -163,10 +163,14 @@ export class Unit {
   }
 
   orderGather(node) {
-    if (this.type !== 'villager' || !node || node.amount <= 0) return;
+    if (!node || node.amount <= 0) return;
+    const gathers = this.def.gathers; // boats: whitelist of node types
+    if (this.type !== 'villager' && !gathers) return;
+    if (gathers && !gathers.includes(node.type)) return;
+    if (!gathers && node.type === 'fish') return; // villagers can't fish
     // If the chosen node can't be reached (e.g. a tree boxed in by other
     // trees), redirect to the nearest same-resource node that can be.
-    if (!this.game.nodeReachable(node)) {
+    if (this.def.domain !== 'water' && !this.game.nodeReachable(node)) {
       const alt = this.game.findNearestReachableNode(node.res, node.wx, node.wz, 60, node);
       if (alt) node = alt;
     }
@@ -238,7 +242,7 @@ export class Unit {
     const map = this.game.map;
     const [sx, sy] = map.worldToGrid(this.x, this.z);
     const [tx, ty] = map.worldToGrid(wx, wz);
-    const tiles = findPath(map, sx, sy, tx, ty, 9000, this.owner);
+    const tiles = findPath(map, sx, sy, tx, ty, 9000, this.owner, this.def.domain || 'land');
     this.pathGoal = [tx, ty];
     this.repathT = 0.8 + this.game.rand() * 0.4;
     this.progT = 0; this.progX = this.x; this.progZ = this.z;
@@ -434,7 +438,8 @@ export class Unit {
       return;
     }
     const res = isFarm ? 'food' : node.res;
-    if (this.carry && (this.carry.res !== res || this.carry.amt >= CARRY_CAPACITY)) {
+    const cap = this.def.carry ?? CARRY_CAPACITY;
+    if (this.carry && (this.carry.res !== res || this.carry.amt >= cap)) {
       this.goDeposit();
       return;
     }
@@ -450,12 +455,12 @@ export class Unit {
         if (node.res === 'wood' && this.game.rand() < 0.3) this.game.sound('chop');
       }
       this.updateCarryMesh();
-      if (this.carry.amt >= CARRY_CAPACITY) this.goDeposit();
+      if (this.carry.amt >= cap) this.goDeposit();
     }
   }
 
   goDeposit() {
-    const drop = this.game.findDropoff(this.owner, this.x, this.z);
+    const drop = this.game.findDropoff(this.owner, this.x, this.z, this.def.domain === 'water');
     if (!drop) { this.clearOrder(); return; }
     this.order.drop = drop;
     this.state = 'deposit';
@@ -467,7 +472,7 @@ export class Unit {
     if (!o) { this.state = 'idle'; return; }
     let drop = o.drop;
     if (!drop || drop.dead) {
-      drop = this.game.findDropoff(this.owner, this.x, this.z);
+      drop = this.game.findDropoff(this.owner, this.x, this.z, this.def.domain === 'water');
       if (!drop) { this.clearOrder(); return; }
       o.drop = drop;
       this.requestPath(drop.cx, drop.cz);
@@ -502,7 +507,11 @@ export class Unit {
   // When a node runs dry, hop to a nearby reachable node of the same resource.
   findNextNode(oldNode) {
     if (!oldNode) { this.clearOrder(); return; }
-    const next = this.game.findNearestReachableNode(oldNode.res, oldNode.wx, oldNode.wz, 22, oldNode);
+    // boats hop to the nearest fish school; villagers to reachable land nodes
+    const next = this.def.domain === 'water'
+      ? this.game.nodes.filter(n => !n.dead && n.type === 'fish' && n.amount > 0 && n !== oldNode)
+          .sort((a, b) => Math.hypot(a.wx - this.x, a.wz - this.z) - Math.hypot(b.wx - this.x, b.wz - this.z))[0] || null
+      : this.game.findNearestReachableNode(oldNode.res, oldNode.wx, oldNode.wz, 22, oldNode);
     if (next) {
       if (this.carry && this.carry.amt > 0 && this.carry.res === oldNode.res) {
         this.order = { kind: 'gather', node: next };
@@ -699,17 +708,20 @@ export class Unit {
 
   tryStep(dx, dz) {
     const map = this.game.map;
+    const ok = this.def.domain === 'water'
+      ? (gx, gy) => map.isWater(gx, gy)
+      : (gx, gy) => map.isWalkableFor(gx, gy, this.owner);
     let nx = this.x + dx, nz = this.z + dz;
     const [gx, gy] = map.worldToGrid(nx, nz);
-    if (map.isWalkableFor(gx, gy, this.owner)) {
+    if (ok(gx, gy)) {
       this.x = nx; this.z = nz;
       return true;
     }
     // slide along axes
     const [gx2, gy2] = map.worldToGrid(this.x + dx, this.z);
-    if (map.isWalkableFor(gx2, gy2, this.owner)) { this.x += dx; return true; }
+    if (ok(gx2, gy2)) { this.x += dx; return true; }
     const [gx3, gy3] = map.worldToGrid(this.x, this.z + dz);
-    if (map.isWalkableFor(gx3, gy3, this.owner)) { this.z += dz; return true; }
+    if (ok(gx3, gy3)) { this.z += dz; return true; }
     return false;
   }
 
@@ -761,7 +773,9 @@ export class Unit {
     const g = this.group;
     g.position.x = this.x;
     g.position.z = this.z;
-    g.position.y = this.game.map.heightAt(this.x, this.z);
+    g.position.y = this.def.domain === 'water'
+      ? -0.42
+      : this.game.map.heightAt(this.x, this.z);
     g.rotation.y = this.facing;
     // hit pulse
     if (this.hitT > 0) {

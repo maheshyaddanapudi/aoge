@@ -364,6 +364,7 @@ export const UNIT_FACTORY = {
   archer: makeArcher,
   knight: makeKnight,
   catapult: makeCatapult,
+  fishingboat: (teamColor) => makeBoat(teamColor),
 };
 
 // ---------------------------------------------------------------------------
@@ -715,6 +716,7 @@ const RAW_BUILDING_FACTORY = {
   // like the storehouse, so its shape works as a stand-in
   blacksmith: makeStorehouse,
   market: makeStorehouse,
+  dock: makeDock,
 };
 
 export const BUILDING_FACTORY = Object.fromEntries(
@@ -777,6 +779,75 @@ export function makeStoneMine() {
   slab.position.set(0.5, 0.2, -0.5);
   slab.rotation.y = 0.7;
   g.add(slab);
+  return g;
+}
+
+// Fish school marker: fins circling above the water surface.
+export function makeFishSchool() {
+  const g = new THREE.Group();
+  for (const [x, z, r] of [[0.4, 0.2, 0.5], [-0.5, -0.3, -0.9], [0.1, -0.6, 2.1], [-0.2, 0.55, 3.4]]) {
+    const fin = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.42, 4), mat(0x5a7f95));
+    fin.position.set(x, 0.14, z);
+    fin.rotation.set(0.35, r, 0.5);
+    g.add(fin);
+  }
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.7, 0.85, 20),
+    new THREE.MeshBasicMaterial({ color: 0xcfe6f5, transparent: true, opacity: 0.4, depthWrite: false })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.05;
+  g.add(ring);
+  return g;
+}
+
+// Fishing boat: simple hull + mast + furled sail (procedural only — the
+// character pack has no watercraft).
+export function makeBoat(teamColor) {
+  const g = new THREE.Group();
+  const hull = box(0.9, 0.45, 2.1, C.woodDark);
+  hull.position.y = 0.28;
+  g.add(hull);
+  const deck = box(0.78, 0.1, 1.9, C.plank);
+  deck.position.y = 0.55;
+  g.add(deck);
+  const prow = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.7, 4), mat(C.woodDark));
+  prow.rotation.x = Math.PI / 2;
+  prow.rotation.y = Math.PI / 4;
+  prow.position.set(0, 0.32, 1.35);
+  g.add(prow);
+  const mast = cyl(0.05, 0.06, 1.6, C.plank, 5);
+  mast.position.y = 1.35;
+  g.add(mast);
+  const sail = box(0.1, 0.7, 0.55, teamColor ?? 0xe8e0cc);
+  sail.position.set(0, 1.45, -0.1);
+  g.add(sail);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.userData.limbs = {};
+  return g;
+}
+
+export function makeDock(teamColor) {
+  const g = new THREE.Group();
+  const deck = box(3.6, 0.28, 3.6, C.plank);
+  deck.position.y = 0.62;
+  g.add(deck);
+  for (const [x, z] of [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5], [0, -1.5], [0, 1.5]]) {
+    const post = cyl(0.14, 0.17, 1.5, C.woodDark, 6);
+    post.position.set(x, 0.1, z);
+    g.add(post);
+  }
+  const hut = box(1.5, 1.1, 1.2, C.wood);
+  hut.position.set(-0.7, 1.3, -0.7);
+  g.add(hut);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.25, 0.8, 4), mat(C.thatch ?? 0xc9a955));
+  roof.rotation.y = Math.PI / 4;
+  roof.position.set(-0.7, 2.25, -0.7);
+  g.add(roof);
+  const b = banner(teamColor, 2.2);
+  b.position.set(1.3, 0.7, 1.3);
+  g.add(b);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
 
