@@ -17,6 +17,7 @@ import { Minimap } from './ui/minimap.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
 import { loadPack, onPackReady } from './render/pack.js';
 import { saveGame, loadSaveMeta, restoreGame } from './game/save.js';
+import { Ambient } from './render/ambient.js';
 import { loadUnitPack } from './render/unitPack.js';
 import { startMusic, combatPulse } from './music.js';
 import { voice } from './voice.js';
@@ -104,6 +105,9 @@ game.ai = game.ais[0];
 
 fog.recompute(game); // reveal the home base before the first frame
 const fogRenderer = new FogRenderer(scene, map, fog);
+
+// ambient life (birds, clouds, ripples, grass) — skipped in lite mode
+const ambient = LITE ? null : new Ambient(scene, map);
 
 // Hide enemy units (visible tiles only), enemy buildings / resource nodes /
 // trees (explored tiles) from the player's view. Runs when fog changes.
@@ -218,6 +222,7 @@ function frame() {
   updateRallyFlag();
   waterT += dt;
   waterNormalTex.offset.set(waterT * 0.012, waterT * 0.009);
+  ambient?.update(dt);
 
   if (running && usePost) {
     perfN++; perfT += dt;
@@ -329,6 +334,7 @@ window.__audio = { voice, combatPulse };
 window.__minimap = minimap;
 window.__startGame = startGame;
 window.__save = doSave;
+window.__ambient = ambient;
 // World -> screen projection (CSS pixels) for tooling/automation.
 window.__project = (wx, wy, wz) => {
   const v = new THREE.Vector3(wx, wy, wz).project(camera);

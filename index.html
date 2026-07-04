@@ -6,6 +6,12 @@
   <title>Age of Empires JS — Browser RTS</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>&#9876;</text></svg>" />
   <style>
+    /* MedievalSharp — CC/OFL, bundled locally (see public/fonts/) */
+    @font-face {
+      font-family: 'MedievalSharp';
+      font-style: normal; font-weight: 400; font-display: swap;
+      src: url('fonts/MedievalSharp.woff2') format('woff2'); /* relative: site lives under /aoge/ */
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0e14; }
     body { font-family: 'Trebuchet MS', 'Segoe UI', sans-serif; user-select: none; -webkit-user-select: none;
@@ -26,6 +32,7 @@
     .res .ico { font-size: 17px; }
     .res .val { font-weight: bold; font-variant-numeric: tabular-nums; }
     #age-disp { margin-left: auto; font-weight: bold; color: #ffd970; letter-spacing: .5px;
+      font-family: 'MedievalSharp', 'Trebuchet MS', serif; font-size: 16px;
       padding: 3px 14px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px; }
     #mute-btn, #pause-btn, #idle-btn, #save-btn { margin-left: 8px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px;
       color: #f0e6d2; font-size: 15px; padding: 3px 10px; cursor: pointer; }
@@ -96,7 +103,8 @@
     #minimap { width: 154px; height: 154px; image-rendering: auto; cursor: crosshair; border: 1px solid #00000088; }
 
     #sel-panel { flex: 1; padding: 8px 12px; color: #f0e6d2; overflow: hidden; display: flex; flex-direction: column; }
-    #sel-title { font-weight: bold; font-size: 16px; color: #ffd970; margin-bottom: 2px; }
+    #sel-title { font-weight: bold; font-size: 16px; color: #ffd970; margin-bottom: 2px;
+      font-family: 'MedievalSharp', 'Trebuchet MS', serif; letter-spacing: .4px; }
     #sel-sub { font-size: 12.5px; color: #cbbfa5; margin-bottom: 6px; min-height: 16px; }
     #sel-cards { display: flex; flex-wrap: wrap; gap: 4px; overflow: hidden; align-content: flex-start; }
     .sel-card { width: 40px; height: 40px; border: 1px solid #6b5128; border-radius: 4px;
@@ -129,7 +137,8 @@
       background: rgba(8, 6, 2, .72); }
     .overlay-box { background: linear-gradient(#3a2c1a, #241a0e); border: 3px solid #8a6a30; border-radius: 10px;
       padding: 30px 44px; color: #f0e6d2; text-align: center; max-width: 640px; box-shadow: 0 8px 40px #000; }
-    .overlay-box h1 { color: #ffd970; margin-bottom: 14px; font-size: 30px; letter-spacing: 1px; }
+    .overlay-box h1 { color: #ffd970; margin-bottom: 14px; font-size: 34px; letter-spacing: 1px;
+      font-family: 'MedievalSharp', 'Trebuchet MS', serif; }
     .overlay-box p { margin: 6px 0; font-size: 15px; line-height: 1.5; }
     .overlay-box .keys { text-align: left; display: inline-block; margin: 10px 0; font-size: 14px; line-height: 1.7; }
     .overlay-box kbd { background: #1a120a; border: 1px solid #6b5128; padding: 1px 7px; border-radius: 4px; font-size: 12.5px; }
