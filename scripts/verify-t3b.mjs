@@ -10,7 +10,7 @@ const R=[];
 
 // S1: blitz — objective UI + winning by razing enemy TCs
 await page.goto(BASE+'?scenario=blitz', { waitUntil: 'networkidle' });
-await page.click('#start-normal'); await page.waitForTimeout(1200);
+await page.evaluate(()=>document.getElementById('start-normal').click()); await page.waitForTimeout(1200);
 R.push(await page.evaluate(()=>{
   const g=window.__game;
   const objShown=!document.getElementById('objective').classList.contains('hidden')&&
@@ -23,7 +23,7 @@ R.push(await page.evaluate(()=>{
 
 // S2: survive — timeout means victory
 await page.goto(BASE+'?scenario=survive', { waitUntil: 'networkidle' });
-await page.click('#start-normal'); await page.waitForTimeout(1200);
+await page.evaluate(()=>document.getElementById('start-normal').click()); await page.waitForTimeout(1200);
 R.push(await page.evaluate(()=>{
   const g=window.__game;
   g.time=599;
@@ -34,7 +34,7 @@ R.push(await page.evaluate(()=>{
 
 // S3: tycoon — 2000 gold wins
 await page.goto(BASE+'?scenario=tycoon', { waitUntil: 'networkidle' });
-await page.click('#start-normal'); await page.waitForTimeout(1200);
+await page.evaluate(()=>document.getElementById('start-normal').click()); await page.waitForTimeout(1200);
 R.push(await page.evaluate(()=>{
   const g=window.__game;
   for(let i=0;i<120;i++)g.update(0.05);

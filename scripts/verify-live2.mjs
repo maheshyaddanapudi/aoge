@@ -5,7 +5,7 @@ const errors = [];
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 await page.goto('https://maheshyaddanapudi.github.io/aoge/', { waitUntil: 'networkidle', timeout: 60000 });
-await page.click('#start-normal');
+await page.evaluate(()=>document.getElementById('start-normal').click());
 await page.waitForTimeout(5000); // let packs load
 const r = await page.evaluate(() => {
   const g = window.__game;

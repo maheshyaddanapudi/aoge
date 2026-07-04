@@ -5,7 +5,7 @@ const errors = [];
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 await page.goto('https://maheshyaddanapudi.github.io/aoge/', { waitUntil: 'networkidle', timeout: 60000 });
-await page.click('#start-normal');
+await page.evaluate(()=>document.getElementById('start-normal').click());
 // poll until unit pack adopts the starting villagers (or 25s)
 let r;
 for (let i = 0; i < 25; i++) {

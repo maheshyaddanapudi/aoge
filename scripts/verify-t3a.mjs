@@ -55,8 +55,9 @@ R.push(`D3 cmd-log: entries=${run1.log.length} tickStamped=${run1.log.every(c=>t
 
 // D4: fixed-tick main loop — real time advances the tick counter in TICK slices
 await page.goto(BASE+'?seed=det1', { waitUntil: 'networkidle' });
-await page.click('#start-normal');
-await page.waitForTimeout(2500);
+await page.evaluate(()=>document.getElementById('start-normal').click());
+// software GL + AO shader warm-up: the first frames can take seconds each
+await page.waitForFunction(()=>window.__game.tick>0, null, { timeout: 30000 }).catch(()=>{});
 R.push(await page.evaluate(()=>{
   const g=window.__game;
   const t=g.tick, time=g.time;

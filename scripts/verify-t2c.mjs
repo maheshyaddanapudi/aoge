@@ -24,7 +24,7 @@ const c1c=await page.evaluate(()=>({trees:window.__game.nodes.filter(n=>n.type==
 
 // C2: 1v2 — three players, allied AIs, win only after BOTH enemies fall
 await page.goto(BASE+'?foes=2', { waitUntil: 'networkidle' });
-await page.click('#start-normal'); await page.waitForTimeout(1800);
+await page.evaluate(()=>document.getElementById('start-normal').click()); await page.waitForTimeout(1800);
 R.push(await page.evaluate(()=>{
   const g=window.__game;
   const setup=g.players.length===3&&g.ais.length===2&&
@@ -45,7 +45,7 @@ R.push(await page.evaluate(()=>{
 
 // C3: stats + score screen (fresh page)
 await page.goto(BASE, { waitUntil: 'networkidle' });
-await page.click('#start-normal'); await page.waitForTimeout(1800);
+await page.evaluate(()=>document.getElementById('start-normal').click()); await page.waitForTimeout(1800);
 R.push(await page.evaluate(()=>{
   const g=window.__game, tc=g.buildings.find(b=>b.owner===0);
   const m=g.spawnUnit('knight',0,tc.cx+10,tc.cz+10);
@@ -99,7 +99,7 @@ R.push(await page.evaluate((snap)=>{
 }, snap));
 
 // C4b: continue button starts the resumed game
-await page.click('#resume-btn'); await page.waitForTimeout(600);
+await page.evaluate(()=>document.getElementById('resume-btn').click()); await page.waitForTimeout(600);
 R.push(await page.evaluate(()=>{
   const hidden=document.getElementById('start-overlay').classList.contains('hidden');
   return `C4b resume-start: overlayHidden=${hidden} ${hidden?'PASS':'FAIL'}`;

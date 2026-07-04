@@ -24,7 +24,7 @@ const m1g=await guest.evaluate(()=>({
 R.push(`M1 lobby: hostLink=${m1h} guestWaiting=${m1g.waiting} guestButtonsHidden=${m1g.buttonsHidden} ${m1h&&m1g.waiting&&m1g.buttonsHidden?'PASS':'FAIL'}`);
 
 // M2: host start propagates to the guest
-await host.click('#start-normal');
+await host.evaluate(()=>document.getElementById('start-normal').click());
 await guest.waitForFunction(()=>document.getElementById('start-overlay').classList.contains('hidden'), null, { timeout: 8000 }).catch(()=>{});
 const m2=await guest.evaluate(()=>document.getElementById('start-overlay').classList.contains('hidden'));
 R.push(`M2 start-sync: guestStarted=${m2} ${m2?'PASS':'FAIL'}`);
@@ -55,7 +55,7 @@ const routed=(m3hMoved.ordered||m3g.ordered);
 R.push(`M3 guest-cmd: host=${JSON.stringify(m3hMoved)} guest=${JSON.stringify(m3g)} ${routed?'PASS':'FAIL'}`);
 
 // M4: pause the host, let the guest catch up, compare exact state hashes
-await host.click('#pause-btn');
+await host.evaluate(()=>document.getElementById('pause-btn').click());
 await guest.waitForTimeout(2500);
 const hh=await host.evaluate(()=>({t:window.__game.tick,h:window.__game.stateHash()}));
 const gh=await guest.evaluate(()=>({t:window.__game.tick,h:window.__game.stateHash(),checks:window.__coop.hashChecks,ok:window.__coop.lastHashOk}));

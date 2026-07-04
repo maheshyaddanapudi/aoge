@@ -6,7 +6,7 @@ const browser = await chromium.launch({ args: ['--use-gl=angle','--enable-unsafe
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
 const errs=[]; page.on('pageerror',e=>errs.push(e.message));
 await page.goto('http://localhost:4250/aoge/', { waitUntil: 'networkidle' });
-await page.click('#start-normal'); await page.waitForTimeout(2200);
+await page.evaluate(()=>document.getElementById('start-normal').click()); await page.waitForTimeout(2200);
 const R = [];
 const step = (n) => page.evaluate((n)=>{for(let i=0;i<n;i++)window.__game.update(0.05);},n);
 
