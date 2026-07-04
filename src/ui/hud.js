@@ -247,13 +247,13 @@ export class HUD {
         ];
         for (const [icon, label, stance, tip] of stances) {
           const sb = this.button(icon, label, tip);
-          sb.onclick = () => { for (const u of mil) { u.stance = stance; u.post = null; } this.game.sound('command'); };
+          sb.onclick = () => { this.game.exec({ k: 'stance', ids: mil.map(u => u.id), s: stance }); this.game.sound('command'); };
           this.dyn.push(() => sb.classList.toggle('stance-on', mil.every(u => u.stance === stance)));
           this.addCmd(sb);
         }
       }
       const stop = this.button('\u{1F6D1}', 'Stop (T)', 'Stop current order');
-      stop.onclick = () => { for (const u of units) u.clearOrder(true); };
+      stop.onclick = () => { this.game.exec({ k: 'stop', ids: units.map(u => u.id) }); };
       this.addCmd(stop);
     }
 
@@ -268,7 +268,7 @@ export class HUD {
             !usable(), costHtml(udef.cost));
           btn.onclick = () => {
             if (p.age < udef.age) { this.game.sound('error'); return; }
-            if (!b.queueTrain(ut)) this.game.sound('error'); else this.game.sound('command');
+            if (!this.game.exec({ k: 'train', b: b.id, u: ut })) this.game.sound('error'); else this.game.sound('command');
           };
           this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
           this.addCmd(btn);
@@ -284,7 +284,7 @@ export class HUD {
           const btn = this.button(tech.icon, tech.name,
             `${tech.name}: ${tech.desc}<br>${costHtml(tech.cost)}<br>${tech.time}s${p.age < tech.age ? `<br>Requires ${AGES[tech.age - 1].name}` : ''}`,
             !usable(), costHtml(tech.cost));
-          btn.onclick = () => { if (b.startTech(id)) this.game.sound('command'); else this.game.sound('error'); };
+          btn.onclick = () => { if (this.game.exec({ k: 'tech', b: b.id, id })) this.game.sound('command'); else this.game.sound('error'); };
           this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
           this.addCmd(btn);
         }
@@ -294,12 +294,12 @@ export class HUD {
         for (const kind of ['wood', 'food', 'stone']) {
           const sell = this.button('\u{1F4E4}', `Sell ${kind}`,
             `Sell ${MARKET.lot} ${kind} for ${MARKET.sellGold} gold`, false, `${MARKET.lot} ${kind}`);
-          sell.onclick = () => { if (!game.trade(PLAYER, kind, 'sell')) this.game.sound('error'); };
+          sell.onclick = () => { if (!game.exec({ k: 'trade', o: PLAYER, kind, dir: 'sell' })) this.game.sound('error'); };
           this.dyn.push(() => sell.classList.toggle('disabled', (p.res[kind] || 0) < MARKET.lot));
           this.addCmd(sell);
           const buy = this.button('\u{1F4E5}', `Buy ${kind}`,
             `Buy ${MARKET.lot} ${kind} for ${MARKET.buyGold} gold`, false, `${MARKET.buyGold}G`);
-          buy.onclick = () => { if (!game.trade(PLAYER, kind, 'buy')) this.game.sound('error'); };
+          buy.onclick = () => { if (!game.exec({ k: 'trade', o: PLAYER, kind, dir: 'buy' })) this.game.sound('error'); };
           this.dyn.push(() => buy.classList.toggle('disabled', (p.res.gold || 0) < MARKET.buyGold));
           this.addCmd(buy);
         }
@@ -308,20 +308,20 @@ export class HUD {
         const next = AGES[p.age];
         const usable = () => !p.ageResearchInProgress && canAfford(p.res, next.cost);
         const btn = this.button('\u{1F3F0}', `Advance`, `Advance to ${next.name}<br>${costHtml(next.cost)}<br>${next.time}s`, !usable(), costHtml(next.cost));
-        btn.onclick = () => { if (usable() && b.startAgeResearch()) this.game.sound('command'); else this.game.sound('error'); };
+        btn.onclick = () => { if (usable() && this.game.exec({ k: 'age', b: b.id })) this.game.sound('command'); else this.game.sound('error'); };
         this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
         this.addCmd(btn);
       }
       // demolish: full refund while under construction, none once complete
       const del = this.button('\u{1F5D1}', b.complete ? 'Demolish' : 'Cancel',
         b.complete ? `Demolish this ${b.def.name} (no refund)` : `Cancel construction<br>full refund`);
-      del.onclick = () => { game.deleteBuilding(b); this.input.select([]); };
+      del.onclick = () => { game.exec({ k: 'demolish', b: b.id }); this.input.select([]); };
       this.addCmd(del);
       // town bell on the TC: garrison nearby villagers / release them
       if (b.complete && b.type === 'towncenter') {
         const bell = this.button('\u{1F514}', (b.garrison?.length ? 'Release' : 'Bell'),
           b.garrison?.length ? `Release ${b.garrison.length} villagers` : 'Ring the bell: nearby villagers hide inside (they add arrows)');
-        bell.onclick = () => { game.townBell(b); };
+        bell.onclick = () => { game.exec({ k: 'bell', b: b.id }); };
         this.addCmd(bell);
       }
 
@@ -346,7 +346,7 @@ export class HUD {
         q.onclick = () => {
           // the queue may have shifted since render — cancel by identity
           const idx = b.trainQueue[i] === ut ? i : b.trainQueue.indexOf(ut);
-          if (idx >= 0) b.cancelTrain(idx);
+          if (idx >= 0) this.game.exec({ k: 'cancelTrain', b: b.id, i: idx });
         };
         queueRow.appendChild(q);
       });

@@ -42,7 +42,7 @@ export class Building {
     this.researching = null; // {age, t, dur}
     this.rally = null;       // {x,z} | {node} | {farm}
     this.atkCd = 0;
-    this.scanT = Math.random() * 0.4;
+    this.scanT = game.rand() * 0.4;
     this.atkTarget = null;
 
     // gates block enemies but stay passable for the owner's units

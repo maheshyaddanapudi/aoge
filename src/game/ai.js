@@ -286,7 +286,7 @@ export class AI {
       this.attackTargetT = 0;
       this.wave = army.map(u => u.id);
       this.waveSize0 = this.wave.length;
-      this.waveT = (100 + Math.random() * 40) * this.d.waveMul;
+      this.waveT = (100 + this.game.rand() * 40) * this.d.waveMul;
       this.retarget();
     } else {
       this.waveT = 25 * this.d.waveMul;

@@ -39,7 +39,7 @@ export class Unit {
     this.isUnit = true;
     this.x = x;
     this.z = z;
-    this.facing = Math.random() * Math.PI * 2;
+    this.facing = game.rand() * Math.PI * 2;
     this.radius = type === 'knight' ? 0.8 : type === 'catapult' ? 0.95 : 0.5;
 
     const ageMult = AGE_HP_MULT[game.players[owner].age - 1];
@@ -58,8 +58,8 @@ export class Unit {
     this.actionT = 0;           // generic action timer (gather tick / attack cd)
     this.stance = 'aggressive'; // aggressive | defensive | hold (military)
     this.post = null;           // defensive stance: where to return after a fight
-    this.scanT = Math.random() * 0.5;
-    this.animT = Math.random() * 10;
+    this.scanT = game.rand() * 0.5;
+    this.animT = game.rand() * 10;
     this.moving = false;
 
     const group = new THREE.Group();
@@ -240,7 +240,7 @@ export class Unit {
     const [tx, ty] = map.worldToGrid(wx, wz);
     const tiles = findPath(map, sx, sy, tx, ty, 9000, this.owner);
     this.pathGoal = [tx, ty];
-    this.repathT = 0.8 + Math.random() * 0.4;
+    this.repathT = 0.8 + this.game.rand() * 0.4;
     this.progT = 0; this.progX = this.x; this.progZ = this.z;
     if (!tiles || tiles.length === 0) {
       this.path = null;
@@ -447,7 +447,7 @@ export class Unit {
       if (!isFarm) {
         node.amount -= take;
         if (node.amount <= 0) this.game.depleteNode(node);
-        if (node.res === 'wood' && Math.random() < 0.3) this.game.sound('chop');
+        if (node.res === 'wood' && this.game.rand() < 0.3) this.game.sound('chop');
       }
       this.updateCarryMesh();
       if (this.carry.amt >= CARRY_CAPACITY) this.goDeposit();
@@ -556,7 +556,7 @@ export class Unit {
     else b.constructionTick(dt);
     if (this.actionT <= 0) {
       this.actionT = 0.5;
-      if (Math.random() < 0.5) this.game.sound('hammer');
+      if (this.game.rand() < 0.5) this.game.sound('hammer');
     }
   }
 
@@ -594,7 +594,7 @@ export class Unit {
     if (this.followPath(dt)) {
       if (this.def.minRange && d < this.def.minRange) {
         // still crowded — try another retreat direction
-        const away = Math.atan2(this.z - (t.isBuilding ? t.cz : t.z), this.x - (t.isBuilding ? t.cx : t.x)) + (Math.random() - 0.5);
+        const away = Math.atan2(this.z - (t.isBuilding ? t.cz : t.z), this.x - (t.isBuilding ? t.cx : t.x)) + (this.game.rand() - 0.5);
         this.requestPath(this.x + Math.cos(away) * 6, this.z + Math.sin(away) * 6);
         return;
       }
@@ -726,7 +726,7 @@ export class Unit {
         px += (dx / d) * f;
         pz += (dz / d) * f;
       } else if (d <= 0.001) {
-        const a = Math.random() * Math.PI * 2;
+        const a = this.game.rand() * Math.PI * 2;
         px += Math.cos(a); pz += Math.sin(a);
       }
     }

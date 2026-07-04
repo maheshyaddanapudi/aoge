@@ -341,12 +341,13 @@ export class InputController {
     const hit = this.pick(cx, cy);
     const units = this.selectedUnits().filter(u => u.type !== 'villager');
     if (!units.length || !hit) return;
+    const ids = units.map(u => u.id);
     if (hit.entity && hit.entity.owner !== PLAYER) {
-      for (const u of units) u.orderAttack(hit.entity);
+      this.game.exec({ k: 'attack', ids, t: hit.entity.id });
     } else {
       const p = hit.point || (hit.node ? { x: hit.node.wx, z: hit.node.wz } : null);
       if (!p) return;
-      for (const u of units) u.orderAttackMove(p.x, p.z);
+      this.game.exec({ k: 'attackmove', ids, x: p.x, z: p.z });
     }
     this.ackFeedback(units);
   }
@@ -458,15 +459,11 @@ export class InputController {
     // finish a wall drag-line: build every valid, affordable segment
     if (e.button === 0 && this.placing?.lineStart) {
       const tiles = this.wallLineTiles();
-      const type = this.placing.type;
-      const placed = [];
-      for (const [gx, gy] of tiles) {
-        const b = this.game.placeBuilding(PLAYER, type, gx, gy);
-        if (b) placed.push(b);
-      }
       const vills = this.selectedUnits().filter(u => u.type === 'villager');
-      vills.forEach((v, i) => { if (placed.length) v.orderBuild(placed[i % placed.length]); });
-      if (placed.length) this.sound('place'); else this.sound('error');
+      const placed = this.game.exec({
+        k: 'placeline', t: this.placing.type, o: PLAYER, tiles, ids: vills.map(v => v.id),
+      });
+      if (placed) this.sound('place'); else this.sound('error');
       this.placing.lineStart = null;
       this.hideWallLine();
       if (!e.shiftKey) this.cancelPlacement();
@@ -574,19 +571,16 @@ export class InputController {
 
     const units = sel.filter(e => e.isUnit);
     const buildingsSel = sel.filter(e => e.isBuilding);
-    // per-unit issue helper honoring shift-queueing
-    const issue = (u, fn) => {
-      if (shift) u.pushOrder(fn);
-      else { u.orderQueue = null; fn(); }
-    };
+    const game = this.game;
+    const ids = units.map(u => u.id);
 
     // Rally point for selected production buildings
     if (!units.length && buildingsSel.length) {
-      for (const b of buildingsSel) {
-        if (hit.node) b.rally = { node: hit.node };
-        else if (hit.entity?.isBuilding && hit.entity.def.isFarm && hit.entity.owner === PLAYER) b.rally = { farm: hit.entity };
-        else if (hit.point) b.rally = { x: hit.point.x, z: hit.point.z };
-      }
+      const bs = buildingsSel.map(b => b.id);
+      if (hit.node) game.exec({ k: 'rally', bs, n: hit.node.id });
+      else if (hit.entity?.isBuilding && hit.entity.def.isFarm && hit.entity.owner === PLAYER) {
+        game.exec({ k: 'rally', bs, f: hit.entity.id });
+      } else if (hit.point) game.exec({ k: 'rally', bs, x: hit.point.x, z: hit.point.z });
       this.sound('command');
       return;
     }
@@ -595,56 +589,34 @@ export class InputController {
     if (hit.entity) {
       const t = hit.entity;
       if (t.owner !== PLAYER) {
-        for (const u of units) issue(u, () => u.orderAttack(t));
+        game.exec({ k: 'attack', ids, t: t.id, shift });
         this.ackFeedback(units);
       } else if (t.isBuilding && (!t.complete || t.hp < t.maxHp - 0.5) && !t.def.isFarm) {
-        // construct or repair
-        for (const u of units) if (u.type === 'villager') issue(u, () => u.orderBuild(t));
+        game.exec({ k: 'build', ids, b: t.id, shift }); // construct or repair
         this.ackFeedback(units.filter(u => u.type === 'villager'));
       } else if (t.isBuilding && t.def.isFarm) {
-        const vills = units.filter(u => u.type === 'villager');
-        for (const v of vills) issue(v, () => v.orderGatherFarm(t));
-        this.ackFeedback(vills);
+        game.exec({ k: 'farm', ids, f: t.id, shift });
+        this.ackFeedback(units.filter(u => u.type === 'villager'));
       } else if (t.isBuilding && t.def.dropoff) {
-        for (const u of units) {
-          if (u.type === 'villager' && u.carry?.amt > 0) {
-            u.order = u.order?.kind === 'gather' || u.order?.kind === 'farm' ? u.order : { kind: 'gather', node: null };
-            u.goDeposit();
-          } else issue(u, () => u.orderMove(t.cx, t.cz));
-        }
+        game.exec({ k: 'deposit', ids, b: t.id, shift });
         this.ackFeedback(units);
       } else {
-        for (const u of units) issue(u, () => u.orderMove(t.isBuilding ? t.cx : t.x, t.isBuilding ? t.cz : t.z));
+        game.exec({ k: 'move', ids, x: t.isBuilding ? t.cx : t.x, z: t.isBuilding ? t.cz : t.z, shift });
         this.ackFeedback(units);
       }
       return;
     }
 
     if (hit.node) {
-      const vills = units.filter(u => u.type === 'villager');
-      const rest = units.filter(u => u.type !== 'villager');
-      for (const v of vills) issue(v, () => v.orderGather(hit.node));
-      for (const u of rest) issue(u, () => u.orderMove(hit.node.wx, hit.node.wz));
+      game.exec({ k: 'gather', ids, n: hit.node.id, shift });
       this.ackFeedback(units);
       return;
     }
 
     if (hit.point) {
-      this.moveFormation(units, hit.point.x, hit.point.z, issue);
+      game.exec({ k: 'move', ids, x: hit.point.x, z: hit.point.z, shift });
       this.ackFeedback(units);
     }
-  }
-
-  moveFormation(units, x, z, issue = (u, fn) => { u.orderQueue = null; fn(); }) {
-    const n = units.length;
-    const cols = Math.ceil(Math.sqrt(n));
-    const spacing = 1.7;
-    units.forEach((u, i) => {
-      const r = Math.floor(i / cols), c = i % cols;
-      const ox = (c - (cols - 1) / 2) * spacing;
-      const oz = (r - (Math.ceil(n / cols) - 1) / 2) * spacing;
-      issue(u, () => u.orderMove(x + ox, z + oz));
-    });
   }
 
   // ---- building placement ---------------------------------------------------------------
@@ -679,10 +651,11 @@ export class InputController {
   tryPlace(keepPlacing) {
     const p = this.placing;
     if (!p || !p.valid) { this.sound('error'); return; }
-    const b = this.game.placeBuilding(PLAYER, p.type, p.gx, p.gy);
-    if (!b) { this.sound('error'); return; }
     const vills = this.selectedUnits().filter(u => u.type === 'villager');
-    for (const v of vills) v.orderBuild(b);
+    const b = this.game.exec({
+      k: 'place', t: p.type, o: PLAYER, gx: p.gx, gy: p.gy, ids: vills.map(v => v.id),
+    });
+    if (!b) { this.sound('error'); return; }
     this.sound('place');
     if (!keepPlacing) this.cancelPlacement();
     else {
@@ -749,7 +722,7 @@ export class InputController {
       return;
     }
     if (e.code === 'KeyT') { // stop (hard: clears queued orders too)
-      for (const u of this.selectedUnits()) u.clearOrder(true);
+      this.game.exec({ k: 'stop', ids: this.selectedUnits().map(u => u.id) });
     }
   }
 }

@@ -9,6 +9,7 @@ import {
 } from '../config.js';
 import { Unit } from './unit.js';
 import { Building } from './building.js';
+import { execCommand } from './commands.js';
 import { makeBerryBush, makeGoldMine, makeStoneMine, mat, C } from '../render/models.js';
 
 let NODE_ID = 1;
@@ -22,6 +23,15 @@ export class Game {
     this.ai = null;        // first enemy AI (kept for tooling/back-compat)
     this.ais = [];         // all enemy AIs (1v1 or 1v2)
     this.fog = null;       // set by main; player-view visibility grid
+
+    // Deterministic core: a fixed-tick counter and a seeded PRNG for ALL
+    // sim randomness. Same seed + same command log => identical playout.
+    this.tick = 0;
+    this.rngState = ((map.seed ^ 0x9e3779b9) >>> 0) || 1;
+    this.cmdLog = null;     // array while recording (set by main at match start)
+    this.onCommand = null;  // co-op interceptor: return false to defer/route
+    this.replayMode = false;
+    this.onTick = null;     // fired after every sim tick (replay feed, net)
     this.time = 0;
     this.gameOver = false;
 
@@ -63,6 +73,38 @@ export class Game {
 
   // Hostility: the player fights every AI; the AIs are allied with each other.
   hostile(a, b) { return a !== b && ((a === PLAYER) !== (b === PLAYER)); }
+
+  // Seeded PRNG (mulberry32) — the only randomness the sim may use.
+  rand() {
+    let t = (this.rngState += 0x6D2B79F5) >>> 0;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
+  // Player-initiated commands flow through here so they can be recorded
+  // (replays) or routed (co-op lockstep). Returns the command's result.
+  exec(cmd) {
+    if (this.replayMode) return; // spectators don't get to steer history
+    if (this.onCommand && this.onCommand(cmd) === false) return;
+    if (this.cmdLog) this.cmdLog.push({ t: this.tick, ...cmd });
+    return execCommand(this, cmd);
+  }
+
+  // Order-insensitive-enough rolling hash of all sim-relevant state; used to
+  // verify determinism (replays, co-op sync).
+  stateHash() {
+    let h = 0x811c9dc5 >>> 0;
+    const mix = (v) => {
+      h = (h ^ (Math.imul(Math.round(v * 256) | 0, 2654435761) >>> 0)) >>> 0;
+      h = ((h << 13) | (h >>> 19)) >>> 0;
+    };
+    for (const u of this.units) { mix(u.id); mix(u.x); mix(u.z); mix(u.hp); }
+    for (const b of this.buildings) { mix(b.id); mix(b.hp); mix(b.progress); mix(b.trainQueue.length); }
+    for (const p of this.players) { mix(p.res.wood); mix(p.res.food); mix(p.res.gold); mix(p.res.stone || 0); mix(p.age); }
+    mix(this.tick);
+    return h >>> 0;
+  }
 
   // ---- setup ------------------------------------------------------------------
 
@@ -407,7 +449,7 @@ export class Game {
       this.scene.add(this.stumpMesh);
     }
     const idx = this.stumpN % 400;
-    const m = new THREE.Matrix4().makeRotationY(Math.random() * 6.28);
+    const m = new THREE.Matrix4().makeRotationY(this.rand() * 6.28);
     m.setPosition(wx, wy, wz);
     this.stumpMesh.setMatrixAt(idx, m);
     this.stumpN++;
@@ -580,6 +622,8 @@ export class Game {
     for (const ai of this.ais) ai.update(dt);
     this.fog?.update(this, dt);
     this.effects.update(dt);
+    this.tick++;
+    this.onTick?.();
   }
 
   // A side is defeated only when it has no buildings AND no villagers left to

@@ -17,6 +17,7 @@ import { Minimap } from './ui/minimap.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
 import { loadPack, onPackReady } from './render/pack.js';
 import { saveGame, loadSaveMeta, restoreGame } from './game/save.js';
+import { execCommand } from './game/commands.js';
 import { Ambient } from './render/ambient.js';
 import { loadUnitPack } from './render/unitPack.js';
 import { startMusic, combatPulse } from './music.js';
@@ -79,9 +80,14 @@ const fog = new Fog(map);
 game.fog = fog;
 if (params.has('nofog')) fog.revealAll();
 
+// Replay spectating: same seed + recorded command log = identical playout.
+const REPLAY = params.has('replay')
+  ? (() => { try { return JSON.parse(localStorage.getItem('aoge-replay') || 'null'); } catch { return null; } })()
+  : null;
+
 // Fresh match: bases in the corners. Loaded match: rebuild from the save
 // (same seed regenerated the identical map + nodes).
-const RESTORE = params.has('load') ? loadSaveMeta() : null;
+const RESTORE = params.has('load') && !REPLAY ? loadSaveMeta() : null;
 let playerTC;
 if (RESTORE) {
   restoreGame(game, RESTORE);
@@ -102,6 +108,18 @@ for (let o = 1; o <= NUM_ENEMIES; o++) {
   game.ais.push(new AI(game, gx, gy, 'normal', o));
 }
 game.ai = game.ais[0];
+
+if (REPLAY) {
+  // spectator: see everything, steer nothing; commands come from the log
+  fog.revealAll();
+  game.replayMode = true;
+  let ri = 0;
+  game.onTick = () => {
+    while (ri < REPLAY.log.length && REPLAY.log[ri].t <= game.tick) {
+      execCommand(game, REPLAY.log[ri++]);
+    }
+  };
+}
 
 fog.recompute(game); // reveal the home base before the first frame
 const fogRenderer = new FogRenderer(scene, map, fog);
@@ -206,10 +224,19 @@ window.addEventListener('keydown', (e) => {
       !document.querySelector('.overlay:not(.hidden)')) setPaused(!paused);
 });
 
+// Fixed-tick sim: the render loop accumulates real time and steps the game
+// in exact TICK slices — the foundation for determinism (replays, co-op).
+const TICK = 0.05;
+let acc = 0;
 function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05);
-  if (running && !paused) for (let i = 0; i < gameSpeed; i++) game.update(dt);
+  if (running && !paused) {
+    acc += dt * gameSpeed;
+    let steps = 0;
+    while (acc >= TICK && steps++ < 16) { game.update(TICK); acc -= TICK; }
+    if (acc > TICK * 16) acc = 0; // huge stall: drop time instead of spiraling
+  }
   rtsCam.update(dt);
   updateSun(rtsCam.smoothTarget, rtsCam.smoothDist);
   if (fog.dirty) {
@@ -244,6 +271,9 @@ let currentDifficulty = 'normal';
 function startGame(difficulty, resume = false) {
   currentDifficulty = difficulty;
   for (const ai of game.ais) ai.setDifficulty(difficulty);
+  // record the command log for the replay system (fresh matches only —
+  // a resumed save has no world-genesis to replay from)
+  if (!resume && !REPLAY) game.cmdLog = [];
   // Easy mode also gives the player a starting stockpile so a quick army is
   // viable without a long economy build-up. (Not again on resume.)
   if (difficulty === 'easy' && !resume) {
@@ -286,7 +316,7 @@ if (optSize) {
 // Resume button (start screen) when a save exists; loading auto-offers it.
 const savedMeta = loadSaveMeta();
 const resumeBtn = document.getElementById('resume-btn');
-if (savedMeta && resumeBtn && !RESTORE) {
+if (savedMeta && resumeBtn && !RESTORE && !REPLAY) {
   resumeBtn.classList.remove('hidden');
   resumeBtn.textContent = `\u{1F4BE} Resume saved game (${savedMeta.difficulty}, ${Math.floor((savedMeta.time || 0) / 60)} min in)`;
   resumeBtn.addEventListener('click', () => {
@@ -306,6 +336,37 @@ if (RESTORE) {
   resumeBtn.textContent = '▶ Continue saved game';
   resumeBtn.addEventListener('click', () => startGame(RESTORE.difficulty || 'normal', true));
 }
+if (REPLAY) {
+  for (const diff of ['easy', 'normal', 'hard']) document.getElementById('start-' + diff)?.classList.add('hidden');
+  document.getElementById('map-opts')?.classList.add('hidden');
+  resumeBtn.classList.remove('hidden');
+  resumeBtn.textContent = '▶ Watch replay';
+  resumeBtn.addEventListener('click', () => startGame(REPLAY.difficulty || 'normal', false));
+}
+
+// After a match, persist its command log so it can be re-watched; the
+// game-over overlay gets a Watch Replay button.
+const hudGameOver = game.onGameOver;
+game.onGameOver = (won) => {
+  if (game.cmdLog && !REPLAY) {
+    try {
+      localStorage.setItem('aoge-replay', JSON.stringify({
+        seed: map.seed.toString(36), size: SIZE_NAME, biome: BIOME_NAME,
+        foes: String(NUM_ENEMIES), difficulty: currentDifficulty, log: game.cmdLog,
+      }));
+    } catch { /* quota — replay just won't be available */ }
+  }
+  hudGameOver(won);
+};
+document.getElementById('replay-btn')?.addEventListener('click', () => {
+  let r = null;
+  try { r = JSON.parse(localStorage.getItem('aoge-replay') || 'null'); } catch { /* no-op */ }
+  if (!r) return;
+  const q = new URLSearchParams();
+  q.set('replay', '1'); q.set('seed', r.seed); q.set('size', r.size);
+  q.set('biome', r.biome); q.set('foes', r.foes);
+  location.search = q.toString();
+});
 
 function doSave() {
   if (!running || game.gameOver) { hud.alert('Nothing to save yet.'); return; }
