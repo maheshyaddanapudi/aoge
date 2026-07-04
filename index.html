@@ -148,13 +148,17 @@
     #gameover-overlay h1.victory { color: #8fe080; }
     #gameover-overlay h1.defeat { color: #ff6b5e; }
     #map-opts select { background: #2a2014; color: #ffe9b0; border: 1px solid #5a4520; border-radius: 4px; padding: 3px 6px; font-size: 13px; }
+    #objective { position: fixed; top: 44px; left: 50%; transform: translateX(-50%);
+      background: rgba(20,14,6,.82); border: 1px solid #6b5128; border-radius: 6px;
+      color: #ffd970; font-size: 13.5px; padding: 4px 14px; z-index: 9;
+      font-family: 'MedievalSharp', 'Trebuchet MS', serif; letter-spacing: .3px; }
     table.score { margin: 10px auto 4px; border-collapse: collapse; font-size: 13px; color: #e8dcc0; }
     table.score th, table.score td { padding: 3px 14px; text-align: right; border-bottom: 1px solid #3a2d18; }
     table.score th { color: #ffd970; }
     table.score tr:last-child td { border-bottom: none; color: #ffd970; }
     .hidden { display: none !important; }
   </style>
-  <script type="module" crossorigin src="/aoge/assets/index-6LSyb3Sb.js"></script>
+  <script type="module" crossorigin src="/aoge/assets/index-DcnEEB-Z.js"></script>
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
@@ -177,6 +181,8 @@
     <button id="save-btn" title="Save game">&#128190;</button>
     <button id="mute-btn" title="Toggle sound">&#128266;</button>
   </div>
+
+  <div id="objective" class="hidden"></div>
 
   <div id="alerts"></div>
 
@@ -222,6 +228,12 @@
         <label>Enemies <select id="opt-foes">
           <option value="1" selected>1 (Red)</option>
           <option value="2">2 (Red + Purple)</option>
+        </select></label>
+        <label>Mode <select id="opt-mode">
+          <option value="" selected>Skirmish</option>
+          <option value="blitz">&#9889; Lightning War</option>
+          <option value="survive">&#128737;&#65039; Hold the Line</option>
+          <option value="tycoon">&#128081; Golden Age</option>
         </select></label>
         <button id="opt-newmap" class="big-btn" style="font-size:13px;padding:4px 12px" title="Generate a new map with these settings">&#127922; New map</button>
       </div>
