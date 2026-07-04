@@ -19,6 +19,8 @@ const MANIFEST = {
   farm: ['Farm_FirstAge_Level2_Wheat', 'Farm_FirstAge_Level3_Wheat', 'Farm_SecondAge_Level2_Wheat', 'Farm_SecondAge_Level3_Wheat'],
   tower: ['WatchTower_FirstAge_Level2', 'WatchTower_FirstAge_Level3', 'WatchTower_SecondAge_Level2', 'WatchTower_SecondAge_Level3'],
   storehouse: ['Market_FirstAge_Level2', 'Market_FirstAge_Level3', 'Market_SecondAge_Level2', 'Market_SecondAge_Level3'],
+  market: ['Market_FirstAge_Level2', 'Market_FirstAge_Level3', 'Market_SecondAge_Level2', 'Market_SecondAge_Level3'],
+  blacksmith: ['TowerHouse_FirstAge', 'TowerHouse_FirstAge', 'TowerHouse_SecondAge', 'TowerHouse_SecondAge'],
   stable: ['Windmill_FirstAge', 'Windmill_FirstAge', 'Windmill_SecondAge', 'Windmill_SecondAge'],
   siegeworkshop: ['TowerHouse_FirstAge', 'TowerHouse_FirstAge', 'TowerHouse_SecondAge', 'TowerHouse_SecondAge'],
   wall: ['Wall_FirstAge', 'Wall_FirstAge', 'Wall_SecondAge', 'Wall_SecondAge'],

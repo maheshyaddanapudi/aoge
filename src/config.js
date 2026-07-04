@@ -36,6 +36,12 @@ export const UNITS = {
     cost: { food: 50, gold: 15 }, trainTime: 9,
     hp: 52, atk: 7, range: 0.7, atkSpeed: 1.3, speed: 4.9, aggro: 11,
   },
+  spearman: {
+    name: 'Spearman', icon: '\u{1F531}', age: 2,
+    cost: { food: 40, wood: 25 }, trainTime: 9,
+    hp: 55, atk: 7, range: 0.8, atkSpeed: 1.4, speed: 5.2, aggro: 11,
+    bonusVsCav: 2.5, // counters knights: 2 spearmen (130 res) beat 1 knight
+  },
   archer: {
     name: 'Archer', icon: '\u{1F3F9}', age: 2,
     cost: { wood: 30, gold: 35 }, trainTime: 10,
@@ -45,6 +51,7 @@ export const UNITS = {
     name: 'Knight', icon: '\u{1F40E}', age: 3,
     cost: { food: 70, gold: 60 }, trainTime: 13,
     hp: 110, atk: 12, range: 0.9, atkSpeed: 1.5, speed: 7.2, aggro: 12,
+    cavalry: true,
   },
   catapult: {
     name: 'Catapult', icon: '\u{1FA93}', age: 4,
@@ -75,7 +82,7 @@ export const BUILDINGS = {
   barracks: {
     name: 'Barracks', icon: '⚔️', age: 1,
     cost: { wood: 125 }, buildTime: 18,
-    hp: 750, size: 3, trains: ['militia'],
+    hp: 750, size: 3, trains: ['militia', 'spearman'],
   },
   farm: {
     name: 'Farm', icon: '\u{1F33E}', age: 1,
@@ -103,6 +110,16 @@ export const BUILDINGS = {
     cost: { wood: 10, stone: 15 }, buildTime: 6,
     hp: 400, size: 1, isWall: true, isGate: true,
   },
+  blacksmith: {
+    name: 'Blacksmith', icon: '⚒️', age: 2,
+    cost: { wood: 120 }, buildTime: 16,
+    hp: 640, size: 2, techs: ['forging', 'scalearmor', 'wheelbarrow', 'masonry'],
+  },
+  market: {
+    name: 'Market', icon: '⚖️', age: 2,
+    cost: { wood: 110 }, buildTime: 14,
+    hp: 600, size: 2, isMarket: true,
+  },
   stable: {
     name: 'Stable', icon: '\u{1F40E}', age: 3,
     cost: { wood: 160 }, buildTime: 20,
@@ -119,8 +136,19 @@ export const BUILDINGS = {
 export const BUILD_MENU = [
   'house', 'storehouse', 'farm', 'barracks',
   'archeryrange', 'tower', 'wall', 'gate',
-  'stable', 'siegeworkshop', 'towncenter',
+  'blacksmith', 'market', 'stable', 'siegeworkshop', 'towncenter',
 ];
+
+// Blacksmith research: one-shot upgrades applied via player.mods multipliers.
+export const TECHS = {
+  forging:     { name: 'Forging',     icon: '\u{1F525}', age: 2, cost: { food: 120, gold: 60 },  time: 25, desc: '+15% unit attack',   mod: { atkMult: 1.15 } },
+  scalearmor:  { name: 'Scale Armor', icon: '\u{1F6E1}', age: 2, cost: { food: 100, gold: 80 },  time: 25, desc: '+15% unit HP',       mod: { hpMult: 1.15 } },
+  wheelbarrow: { name: 'Wheelbarrow', icon: '\u{1F6D2}', age: 2, cost: { food: 150, wood: 60 },  time: 30, desc: '+15% gather rate',   mod: { gatherMult: 1.15 } },
+  masonry:     { name: 'Masonry',     icon: '\u{1F9F1}', age: 3, cost: { food: 130, stone: 60 }, time: 30, desc: '+20% building HP',   mod: { bldHpMult: 1.2 } },
+};
+
+// Market trading: fixed rates with an AoE-style spread.
+export const MARKET = { lot: 100, sellGold: 60, buyGold: 90 };
 
 export const RESOURCE_KINDS = ['wood', 'food', 'gold', 'stone'];
 

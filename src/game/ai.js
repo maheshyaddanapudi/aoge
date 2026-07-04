@@ -2,7 +2,7 @@
 // housing, build order), advances through the ages, trains an army and
 // launches attack waves at the player. Defends its base when raided.
 
-import { TILE, PLAYER, ENEMY, BUILDINGS, UNITS, AGES, canAfford } from '../config.js';
+import { TILE, PLAYER, ENEMY, BUILDINGS, UNITS, AGES, TECHS, canAfford } from '../config.js';
 
 const VILL_TARGET_BY_AGE = [9, 13, 17, 20];
 const ARMY_CAP_BY_AGE = [8, 13, 19, 27];
@@ -212,9 +212,31 @@ export class AI {
     if (p.age >= 2) {
       if (this.myBuildings('archeryrange').length === 0) this.construct('archeryrange');
       if (this.myBuildings('tower').length < 2 && p.res.wood > 200) this.construct('tower');
+      if (this.myBuildings('blacksmith').length === 0 && p.res.wood > 180) this.construct('blacksmith');
     }
     if (p.age >= 3 && this.myBuildings('stable').length === 0) this.construct('stable');
+    if (p.age >= 3 && this.myBuildings('market').length === 0 && p.res.wood > 220) this.construct('market');
     if (p.age >= 4 && this.myBuildings('siegeworkshop').length === 0) this.construct('siegeworkshop');
+
+    // Blacksmith research: pick up affordable techs once the economy has slack
+    const smith = this.myBuildings('blacksmith').find(b => b.complete && !b.researching);
+    if (smith) {
+      for (const [id, tech] of Object.entries(TECHS)) {
+        if (p.age < tech.age || p.techs.includes(id)) continue;
+        if (this.myBuildings('blacksmith').some(b => b.researching?.tech === id)) continue;
+        if (canAfford(p.res, tech.cost) && p.res.food > (tech.cost.food || 0) + 120) {
+          smith.startTech(id);
+          break;
+        }
+      }
+    }
+
+    // Market: dump surplus into gold when the treasury runs dry
+    const market = this.myBuildings('market').find(b => b.complete);
+    if (market && p.res.gold < 60) {
+      if (p.res.wood > 500) this.game.trade(this.me, 'wood', 'sell');
+      else if (p.res.food > 800) this.game.trade(this.me, 'food', 'sell');
+    }
 
     // Age up (capped by difficulty — easy stays in the Dark Age)
     if (!p.ageResearchInProgress && p.age < AGES.length && p.age < this.d.maxAge) {
@@ -236,8 +258,14 @@ export class AI {
       const producers = this.myBuildings().filter(b =>
         b.complete && b.def.trains && b.type !== 'towncenter');
       if (playerDef >= 4) producers.sort((a, b2) => (b2.type === 'siegeworkshop' ? 1 : 0) - (a.type === 'siegeworkshop' ? 1 : 0));
+      // counter-intel: lots of player cavalry -> lean on spearmen
+      const playerCav = this.game.units.filter(u =>
+        u.owner === PLAYER && !u.dead && u.def.cavalry).length;
       for (const b of producers) {
         if (b.trainQueue.length >= 2) continue;
+        if (b.type === 'barracks' && playerCav >= 3 && p.age >= UNITS.spearman.age) {
+          b.queueTrain('spearman');
+        }
         for (const ut of b.def.trains) {
           if (p.age >= UNITS[ut].age) b.queueTrain(ut);
         }

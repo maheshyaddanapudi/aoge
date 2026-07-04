@@ -360,6 +360,7 @@ export function makeCatapult(teamColor) {
 export const UNIT_FACTORY = {
   villager: makeVillager,
   militia: makeMilitia,
+  spearman: makeMilitia, // procedural fallback; the pack model carries a spear
   archer: makeArcher,
   knight: makeKnight,
   catapult: makeCatapult,
@@ -710,6 +711,10 @@ const RAW_BUILDING_FACTORY = {
   gate: () => makeGate(),
   stable: makeStable,
   siegeworkshop: makeSiegeWorkshop,
+  // procedural fallbacks (the CC0 pack has the real models): both are 2x2
+  // like the storehouse, so its shape works as a stand-in
+  blacksmith: makeStorehouse,
+  market: makeStorehouse,
 };
 
 export const BUILDING_FACTORY = Object.fromEntries(

@@ -1,7 +1,7 @@
 // Building entity: construction progress, training queues, tower/TC defense.
 
 import * as THREE from 'three';
-import { TILE, BUILDINGS, UNITS, AGES, canAfford, payCost, refundCost } from '../config.js';
+import { TILE, BUILDINGS, UNITS, AGES, TECHS, canAfford, payCost, refundCost } from '../config.js';
 import { BUILDING_FACTORY, makeScaffold, makeBanner } from '../render/models.js';
 import { makeSelectionRing, HealthBar } from '../render/effects.js';
 import { packBuilding } from '../render/pack.js';
@@ -32,7 +32,7 @@ export class Building {
     this.cz = (gy + this.size / 2) * TILE;
     this.dead = false;
 
-    this.maxHp = this.def.hp;
+    this.maxHp = Math.round(this.def.hp * (game.players[owner].mods?.bldHpMult || 1));
     this.complete = prebuilt;
     this.progress = prebuilt ? 1 : 0;
     this.hp = prebuilt ? this.maxHp : Math.max(1, Math.round(this.maxHp * 0.08));
@@ -192,6 +192,21 @@ export class Building {
     if (idx === 0) this.trainT = 0;
   }
 
+  // Blacksmith research. One project per building; a tech can only be in
+  // progress in one place and never re-researched.
+  startTech(techId) {
+    const p = this.game.players[this.owner];
+    const tech = TECHS[techId];
+    if (!this.complete || !this.def.techs?.includes(techId) || !tech) return false;
+    if (this.researching || p.techs.includes(techId)) return false;
+    if (p.age < tech.age) return false;
+    if (this.game.buildings.some(b => !b.dead && b.owner === this.owner && b.researching?.tech === techId)) return false;
+    if (!canAfford(p.res, tech.cost)) return false;
+    payCost(p.res, tech.cost);
+    this.researching = { tech: techId, t: 0, dur: tech.time };
+    return true;
+  }
+
   startAgeResearch() {
     const p = this.game.players[this.owner];
     if (!this.complete || !this.def.researchesAge) return false;
@@ -229,11 +244,12 @@ export class Building {
       }
     }
 
-    // age research
+    // age / tech research
     if (this.researching) {
       this.researching.t += dt;
       if (this.researching.t >= this.researching.dur) {
-        this.game.advanceAge(this.owner, this.researching.age);
+        if (this.researching.tech) this.game.applyTech(this.owner, this.researching.tech);
+        else this.game.advanceAge(this.owner, this.researching.age);
         this.researching = null;
       }
     }

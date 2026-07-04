@@ -1,6 +1,6 @@
 // DOM HUD: resource bar, alerts, selection panel, command card, game over.
 
-import { PLAYER, AGES, UNITS, BUILDINGS, BUILD_MENU, canAfford } from '../config.js';
+import { PLAYER, AGES, UNITS, BUILDINGS, BUILD_MENU, TECHS, MARKET, canAfford } from '../config.js';
 import { playSound } from '../audio.js';
 import { stopMusic } from '../music.js';
 
@@ -95,7 +95,7 @@ export class HUD {
   computeStructKey() {
     const sel = this.selection.filter(e => !e.dead);
     const p = this.game.players[PLAYER];
-    let key = sel.map(e => e.id).join(',') + '|' + p.age;
+    let key = sel.map(e => e.id).join(',') + '|' + p.age + '|' + p.techs.length;
     const first = sel[0];
     if (sel.length === 1 && first?.isBuilding) {
       key += '|' + (first.complete ? 'c' : 'u') + '|' + first.trainQueue.join(',') +
@@ -242,6 +242,36 @@ export class HUD {
           this.addCmd(btn);
         }
       }
+      // blacksmith tech research
+      if (b.complete && b.def.techs) {
+        for (const id of b.def.techs) {
+          if (p.techs.includes(id)) continue;
+          const tech = TECHS[id];
+          const inProg = () => this.game.buildings.some(x => !x.dead && x.owner === PLAYER && x.researching?.tech === id);
+          const usable = () => p.age >= tech.age && !b.researching && !inProg() && canAfford(p.res, tech.cost);
+          const btn = this.button(tech.icon, tech.name,
+            `${tech.name}: ${tech.desc}<br>${costHtml(tech.cost)}<br>${tech.time}s${p.age < tech.age ? `<br>Requires ${AGES[tech.age - 1].name}` : ''}`,
+            !usable(), costHtml(tech.cost));
+          btn.onclick = () => { if (b.startTech(id)) this.game.sound('command'); else this.game.sound('error'); };
+          this.dyn.push(() => btn.classList.toggle('disabled', !usable()));
+          this.addCmd(btn);
+        }
+      }
+      // market trading
+      if (b.complete && b.def.isMarket) {
+        for (const kind of ['wood', 'food', 'stone']) {
+          const sell = this.button('\u{1F4E4}', `Sell ${kind}`,
+            `Sell ${MARKET.lot} ${kind} for ${MARKET.sellGold} gold`, false, `${MARKET.lot} ${kind}`);
+          sell.onclick = () => { if (!game.trade(PLAYER, kind, 'sell')) this.game.sound('error'); };
+          this.dyn.push(() => sell.classList.toggle('disabled', (p.res[kind] || 0) < MARKET.lot));
+          this.addCmd(sell);
+          const buy = this.button('\u{1F4E5}', `Buy ${kind}`,
+            `Buy ${MARKET.lot} ${kind} for ${MARKET.buyGold} gold`, false, `${MARKET.buyGold}G`);
+          buy.onclick = () => { if (!game.trade(PLAYER, kind, 'buy')) this.game.sound('error'); };
+          this.dyn.push(() => buy.classList.toggle('disabled', (p.res.gold || 0) < MARKET.buyGold));
+          this.addCmd(buy);
+        }
+      }
       if (b.complete && b.def.researchesAge && p.age < AGES.length) {
         const next = AGES[p.age];
         const usable = () => !p.ageResearchInProgress && canAfford(p.res, next.cost);
@@ -267,7 +297,7 @@ export class HUD {
       if (b.researching) {
         const q = document.createElement('div');
         q.className = 'q-item';
-        q.innerHTML = `<div class="prog"></div><span>\u{1F3F0}</span>`;
+        q.innerHTML = `<div class="prog"></div><span>${b.researching.tech ? TECHS[b.researching.tech].icon : '\u{1F3F0}'}</span>`;
         const prog = q.querySelector('.prog');
         const patch = () => { if (b.researching) prog.style.width = (b.researching.t / b.researching.dur) * 100 + '%'; };
         patch(); this.dyn.push(patch);

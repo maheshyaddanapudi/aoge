@@ -4,7 +4,8 @@
 import * as THREE from 'three';
 import {
   TILE, PLAYER, ENEMY, TEAM_COLORS, POP_MAX, AGES, BUILDINGS, UNITS,
-  RESOURCE_NODES, START_RESOURCES, AGE_HP_MULT, canAfford, payCost, refundCost,
+  RESOURCE_NODES, START_RESOURCES, AGE_HP_MULT, TECHS, MARKET,
+  canAfford, payCost, refundCost,
 } from '../config.js';
 import { Unit } from './unit.js';
 import { Building } from './building.js';
@@ -30,6 +31,8 @@ export class Game {
       popUsed: 0,
       popCap: 0,
       ageResearchInProgress: false,
+      techs: [], // researched blacksmith tech ids
+      mods: { atkMult: 1, hpMult: 1, gatherMult: 1, bldHpMult: 1 },
     }));
 
     this.units = [];
@@ -183,6 +186,52 @@ export class Game {
     }
   }
 
+  // Blacksmith tech completed: fold the multiplier into player.mods and
+  // rescale existing entities the same way advanceAge does.
+  applyTech(owner, techId) {
+    const p = this.players[owner];
+    if (p.techs.includes(techId)) return;
+    const tech = TECHS[techId];
+    p.techs.push(techId);
+    for (const [k, v] of Object.entries(tech.mod)) p.mods[k] *= v;
+    if (tech.mod.hpMult) {
+      for (const u of this.units) {
+        if (u.owner === owner && !u.dead) {
+          u.maxHp = Math.round(u.maxHp * tech.mod.hpMult);
+          u.hp = Math.min(u.maxHp, Math.round(u.hp * tech.mod.hpMult));
+        }
+      }
+    }
+    if (tech.mod.bldHpMult) {
+      for (const b of this.buildings) {
+        if (b.owner === owner && !b.dead) {
+          b.maxHp = Math.round(b.maxHp * tech.mod.bldHpMult);
+          b.hp = Math.min(b.maxHp, Math.round(b.hp * tech.mod.bldHpMult));
+        }
+      }
+    }
+    if (owner === PLAYER) {
+      this.onAlert(`Research complete: ${tech.name} (${tech.desc})`, true);
+      this.sound('ageup');
+    }
+  }
+
+  // Market trading at fixed rates. dir: 'sell' (kind -> gold) | 'buy' (gold -> kind).
+  trade(owner, kind, dir) {
+    const res = this.players[owner].res;
+    if (dir === 'sell') {
+      if ((res[kind] || 0) < MARKET.lot) return false;
+      res[kind] -= MARKET.lot;
+      res.gold = (res.gold || 0) + MARKET.sellGold;
+    } else {
+      if ((res.gold || 0) < MARKET.buyGold) return false;
+      res.gold -= MARKET.buyGold;
+      res[kind] = (res[kind] || 0) + MARKET.lot;
+    }
+    if (owner === PLAYER) this.sound('deposit');
+    return true;
+  }
+
   // ---- damage & death ------------------------------------------------------------
 
   applyDamage(target, dmg, attacker) {
@@ -298,11 +347,14 @@ export class Game {
     const res = this.players[b.owner].res;
     for (const ut of b.trainQueue) refundCost(res, UNITS[ut].cost);
     b.trainQueue.length = 0;
-    if (b.researching) refundCost(res, AGES[b.researching.age - 1].cost);
+    if (b.researching) {
+      refundCost(res, b.researching.tech ? TECHS[b.researching.tech].cost
+                                         : AGES[b.researching.age - 1].cost);
+      if (!b.researching.tech) this.players[b.owner].ageResearchInProgress = false;
+    }
     this.map.release(b.gx, b.gy, b.size);
     this.buildings.splice(this.buildings.indexOf(b), 1);
     this.recalcPop(b.owner);
-    if (b.researching) this.players[b.owner].ageResearchInProgress = false;
     this.effects.puff(new THREE.Vector3(b.cx, b.groundY + 1.5, b.cz), 0x8a7a60, 16, 7);
     this.effects.fadeOut(b.group, 2.2, b.size * 1.2);
     this.effects.spawnRubble(b.cx, b.groundY, b.cz, b.size);

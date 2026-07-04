@@ -11,12 +11,29 @@ import { clone as skeletonClone } from 'three/addons/utils/SkeletonUtils.js';
 const CHARACTERS = {
   villager: { file: 'Rogue', height: 1.75, weaponR: 'axe_1handed' },
   militia: { file: 'Barbarian', height: 1.85, weaponR: 'axe_1handed', weaponL: 'shield_round_barbarian' },
+  spearman: { file: 'Barbarian', height: 1.85, weaponR: 'spear_proc' },
   archer: { file: 'Ranger', height: 1.8, weaponL: 'bow_withString' },
   knight: { file: 'Knight', height: 1.95, weaponR: 'sword_1handed', weaponL: 'shield_round' },
 };
 
 const WEAPON_FILES = ['axe_1handed', 'sword_1handed', 'bow_withString', 'shield_round', 'shield_round_barbarian'];
 const weaponProtos = new Map(); // file -> Object3D prototype
+
+// The pack has no spear model — build one (KayKit weapons point up +Y from
+// the grip at the origin, so match that convention).
+let spearShaftMat, spearTipMat;
+function makeSpear() {
+  spearShaftMat = spearShaftMat || new THREE.MeshStandardMaterial({ color: 0x8a6238, roughness: 0.9 });
+  spearTipMat = spearTipMat || new THREE.MeshStandardMaterial({ color: 0xb9c2cc, metalness: 0.7, roughness: 0.35 });
+  const g = new THREE.Group();
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 1.7, 6), spearShaftMat);
+  shaft.position.y = 0.5; // grip about a third up the shaft
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.075, 0.3, 6), spearTipMat);
+  tip.position.y = 0.5 + 0.85 + 0.15;
+  shaft.castShadow = tip.castShadow = true;
+  g.add(shaft, tip);
+  return g;
+}
 
 // state -> animation clip name. melee/shoot are synthesized procedurally
 // (the FREE pack has no sword-slash or bow-draw clips — see buildCombatClips).
@@ -206,7 +223,10 @@ export function packUnit(type, teamColor) {
   });
 
   // Attach weapons to the hand-slot bones (after tinting so they keep steel/wood).
-  if (def.weaponR && weaponProtos.has(def.weaponR)) {
+  if (def.weaponR === 'spear_proc') {
+    const slot = model.getObjectByName('handslotr');
+    if (slot) slot.add(makeSpear());
+  } else if (def.weaponR && weaponProtos.has(def.weaponR)) {
     const slot = model.getObjectByName('handslotr');
     if (slot) slot.add(weaponProtos.get(def.weaponR).clone(true));
   }

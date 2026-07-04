@@ -43,7 +43,7 @@ export class Unit {
     this.radius = type === 'knight' ? 0.8 : type === 'catapult' ? 0.95 : 0.5;
 
     const ageMult = AGE_HP_MULT[game.players[owner].age - 1];
-    this.maxHp = Math.round(this.def.hp * ageMult);
+    this.maxHp = Math.round(this.def.hp * ageMult * (game.players[owner].mods?.hpMult || 1));
     this.hp = this.maxHp;
     this.dead = false;
 
@@ -439,7 +439,8 @@ export class Unit {
       return;
     }
     if (this.actionT <= 0) {
-      this.actionT = 1 / (isFarm ? node.def.farmRate : this.def.gatherRate);
+      const gMult = this.game.players[this.owner].mods?.gatherMult || 1;
+      this.actionT = 1 / ((isFarm ? node.def.farmRate : this.def.gatherRate) * gMult);
       if (!this.carry) this.carry = { res, amt: 0 };
       const take = isFarm ? 1 : Math.min(1, node.amount);
       this.carry.amt += take;
@@ -634,7 +635,8 @@ export class Unit {
 
   strike(t) {
     const game = this.game;
-    const atk = Math.round(this.def.atk * AGE_ATK_MULT[game.players[this.owner].age - 1]);
+    const p = game.players[this.owner];
+    const atk = Math.round(this.def.atk * AGE_ATK_MULT[p.age - 1] * (p.mods?.atkMult || 1));
     this.attackAnimT = 0.35;
     if (this.def.projectile === 'arrow') {
       const from = this.pos3(); from.y += 1.5;
@@ -649,6 +651,9 @@ export class Unit {
       if (this.limbs.throwArm) this.throwAnimT = 0.5;
     } else {
       let dmg = atk;
+      if (!t.isBuilding && this.def.bonusVsCav && t.def?.cavalry) {
+        dmg = Math.round(dmg * this.def.bonusVsCav); // spearman counters cavalry
+      }
       if (t.isBuilding) dmg = Math.max(1, Math.round(atk * (this.type === 'villager' ? 0.6 : 0.8)));
       game.applyDamage(t, dmg, this);
       game.effects.blood(t.isBuilding ? new THREE.Vector3(t.cx, t.groundY + 1.2, t.cz) : t.pos3().setY(this.group.position.y + 1.1));
