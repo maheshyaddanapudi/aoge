@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { N8AOPass } from 'n8ao';
 import { WORLD } from '../config.js';
 import { skyGradient } from './textures.js';
 
@@ -39,7 +40,12 @@ export function createScene(canvas) {
 
   const sun = new THREE.DirectionalLight(0xfff2d8, 2.0);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  // Shadow quality scales with the GPU: 4k maps when texture budget allows.
+  // (A real CSM was evaluated — three's addon needs every material patched
+  // via setupMaterial, which fights our dynamically created team/pack
+  // materials; the distance-scaled ortho box below is the pragmatic cascade.)
+  const shadowRes = renderer.capabilities.maxTextureSize >= 8192 ? 4096 : 2048;
+  sun.shadow.mapSize.set(shadowRes, shadowRes);
   sun.shadow.bias = -0.0008;
   sun.shadow.normalBias = 0.04;
   const SH = 65;
@@ -82,6 +88,17 @@ export function createScene(canvas) {
   });
   const composer = new EffectComposer(renderer, target);
   composer.addPass(new RenderPass(scene, camera));
+  // N8AO ground-truth ambient occlusion: grounds units/buildings/trees with
+  // contact shadows. Half-res + accumulation keeps it cheap; the perf guard
+  // in main.js still drops the whole post stack on weak GPUs.
+  const n8ao = new N8AOPass(scene, camera, window.innerWidth, window.innerHeight);
+  n8ao.configuration.aoRadius = 2.2;
+  n8ao.configuration.distanceFalloff = 3.5;
+  n8ao.configuration.intensity = 2.6;
+  n8ao.configuration.halfRes = true;
+  n8ao.configuration.gammaCorrection = false; // OutputPass handles color space
+  n8ao.setQualityMode('Low');
+  composer.addPass(n8ao);
   const bloom = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.55, 0.82);
   composer.addPass(bloom);

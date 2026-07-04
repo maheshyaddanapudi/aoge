@@ -47,6 +47,7 @@ game.effects = new Effects(scene, game);
 game.soundFn = playSound;
 game.onCombat = combatPulse;
 game.createResourceNodes(resourceDescriptors);
+if (!LITE) trees.buildImpostors(renderer); // billboard LOD snapshots
 
 // --- starting bases ------------------------------------------------------------
 function spawnBase(owner, [gx, gy]) {
@@ -223,6 +224,7 @@ function updateRallyFlag() {
 }
 
 let waterT = 0;
+let lodT = 0;
 // Perf guard: if the GPU can't hold a playable framerate with the full
 // post-processing stack, drop to direct rendering at native-ish resolution.
 let usePost = !LITE;
@@ -274,6 +276,17 @@ function frame() {
     fogRenderer.refresh();
     applyFogVisibility();
     fog.dirty = false;
+  }
+  // tree LOD: far trees collapse to billboards (hysteresis avoids popping)
+  lodT -= dt;
+  if (lodT <= 0) {
+    lodT = 0.25;
+    const t = rtsCam.smoothTarget;
+    for (const n of game.nodes) {
+      if (n.dead || !n.treeHandle) continue;
+      const d = Math.hypot(n.wx - t.x, n.wz - t.z);
+      trees.setFar(n.treeHandle, d > (n.treeHandle.far ? 82 : 95));
+    }
   }
   hud.update(dt);
   minimap.update(dt);
@@ -475,6 +488,8 @@ window.__minimap = minimap;
 window.__startGame = startGame;
 window.__save = doSave;
 window.__ambient = ambient;
+window.__composer = composer;
+window.__trees = trees;
 // World -> screen projection (CSS pixels) for tooling/automation.
 window.__project = (wx, wy, wz) => {
   const v = new THREE.Vector3(wx, wy, wz).project(camera);

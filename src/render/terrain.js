@@ -272,7 +272,10 @@ export class TreeRenderer {
         part.inst.setColorAt(idx, this.tmpC);
       }
     }
-    return { idx, species: sp, matrix: this.tmpM.clone(), hidden: false };
+    // billboards use an unrotated matrix (a random-yaw quad can go edge-on)
+    const bbM = new THREE.Matrix4().makeScale(sc, sc * (0.9 + (rngVal * 131 % 1) * 0.3), sc);
+    bbM.setPosition(wx, wy, wz);
+    return { idx, species: sp, matrix: this.tmpM.clone(), bbMatrix: bbM, hidden: false, far: false };
   }
 
   remove(handle) {
@@ -290,10 +293,93 @@ export class TreeRenderer {
   setHidden(handle, hidden) {
     if (!handle || !handle.matrix || handle.hidden === hidden) return;
     handle.hidden = hidden;
+    this._apply(handle);
+  }
+
+  // Distance LOD: far trees collapse to a single billboard quad (the RTS
+  // camera has a fixed yaw, so one pre-rendered snapshot per species works).
+  setFar(handle, far) {
+    if (!handle || !handle.matrix || handle.far === !!far) return;
+    handle.far = !!far;
+    this._apply(handle);
+  }
+
+  // Resolve a tree's state: fog-hidden > billboard > full 3D.
+  _apply(handle) {
+    const use3D = !handle.hidden && !(handle.far && handle.species.billboard);
+    const useBB = !handle.hidden && handle.far && handle.species.billboard;
     for (const part of handle.species.parts) {
-      part.inst.setMatrixAt(handle.idx, hidden ? this.zero : handle.matrix);
+      part.inst.setMatrixAt(handle.idx, use3D ? handle.matrix : this.zero);
       part.inst.instanceMatrix.needsUpdate = true;
     }
+    const bb = handle.species.billboard;
+    if (bb) {
+      bb.setMatrixAt(handle.idx, useBB ? (handle.bbMatrix || handle.matrix) : this.zero);
+      bb.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  // Render each species to a small offscreen snapshot and build a matching
+  // billboard InstancedMesh. Call once after load() (needs the renderer).
+  buildImpostors(renderer) {
+    if (!this.ready || this.impostorsBuilt) return;
+    this.impostorsBuilt = true;
+    const snapScene = new THREE.Scene();
+    snapScene.add(new THREE.AmbientLight(0xffffff, 1.35));
+    const dl = new THREE.DirectionalLight(0xfff2d8, 1.6);
+    dl.position.set(-3, 6, 4);
+    snapScene.add(dl);
+
+    const prevTarget = renderer.getRenderTarget();
+    const prevClear = new THREE.Color();
+    renderer.getClearColor(prevClear);
+    const prevAlpha = renderer.getClearAlpha();
+
+    for (const sp of this.species) {
+      // one representative mesh per part, with the species' leaf tint baked in
+      const group = new THREE.Group();
+      const bbox = new THREE.Box3();
+      for (const part of sp.parts) {
+        const mat = part.isLeaf
+          ? new THREE.MeshLambertMaterial({
+              map: part.inst.material.map || null,
+              color: (part.baseColor || new THREE.Color(0x4f8c3a)).clone(),
+            })
+          : new THREE.MeshLambertMaterial({ color: part.inst.material.color?.clone() ?? 0x7a5536 });
+        const m = new THREE.Mesh(part.inst.geometry, mat);
+        group.add(m);
+        bbox.union(new THREE.Box3().setFromBufferAttribute(part.inst.geometry.attributes.position));
+      }
+      snapScene.add(group);
+      const size = bbox.getSize(new THREE.Vector3());
+      const cx = (bbox.min.x + bbox.max.x) / 2;
+      const cy = (bbox.min.y + bbox.max.y) / 2;
+      const w = Math.max(size.x, size.z) * 1.05, h = size.y * 1.05;
+      const cam = new THREE.OrthographicCamera(-w / 2, w / 2, h / 2, -h / 2, 0.1, 60);
+      cam.position.set(cx, cy, bbox.max.z + 20);
+      cam.lookAt(cx, cy, 0);
+      const rt = new THREE.WebGLRenderTarget(128, 128, { format: THREE.RGBAFormat });
+      renderer.setRenderTarget(rt);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear();
+      renderer.render(snapScene, cam);
+      snapScene.remove(group);
+
+      const plane = new THREE.PlaneGeometry(w, h);
+      plane.translate(0, bbox.min.y + h / 2, 0); // feet on the ground
+      const bb = new THREE.InstancedMesh(plane, new THREE.MeshBasicMaterial({
+        map: rt.texture, alphaTest: 0.45, side: THREE.DoubleSide,
+      }), this.capacity);
+      bb.frustumCulled = false;
+      bb.count = this.capacity;
+      for (let i = 0; i < this.capacity; i++) bb.setMatrixAt(i, this.zero);
+      this.scene.add(bb);
+      sp.billboard = bb;
+    }
+    renderer.setRenderTarget(prevTarget);
+    renderer.setClearColor(prevClear, prevAlpha);
+    // billboards render as many as placed, same as the 3D parts
+    for (const sp of this.species) if (sp.billboard) sp.billboard.count = Math.max(1, this.next);
   }
 
   flush() {

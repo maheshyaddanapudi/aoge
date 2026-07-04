@@ -9,6 +9,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "n8ao": "^1.10.2",
+    "postprocessing": "^6.39.2",
     "three": "^0.165.0"
   },
   "devDependencies": {

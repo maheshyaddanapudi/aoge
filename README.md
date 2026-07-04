@@ -74,3 +74,23 @@ node scripts/smoke.mjs   # headless playthrough test (needs npx playwright insta
 ```
 
 Deployed automatically to GitHub Pages via `.github/workflows/deploy.yml`.
+
+## Rendering notes
+
+- **Ambient occlusion**: N8AO (half-res, low quality mode) runs in the post
+  stack; a runtime perf guard drops all post-processing on GPUs that can't
+  hold ~28 FPS, and `?lite` skips shadows + post entirely.
+- **Shadows**: one directional light whose ortho shadow box re-centers on the
+  camera target and scales with zoom (4k shadow maps on capable GPUs). A real
+  cascaded shadow map (three's CSM addon) was evaluated and skipped: it
+  requires patching every material via `setupMaterial`, which conflicts with
+  the dynamically generated team/pack/instanced materials.
+- **Tree LOD**: each tree species is rendered once to an offscreen snapshot;
+  trees beyond ~95 world units of the camera target collapse to billboard
+  quads (the RTS camera has a fixed yaw, so one angle suffices) and pop back
+  to instanced 3D when the camera nears, with hysteresis.
+- **WebGPU**: assessed at three r165 — `WebGPURenderer` is still maturing
+  (incomplete post-processing and shader-node coverage) and Safari/Firefox
+  lack stable WebGPU, so the game stays on WebGL2. The renderer-facing code
+  (instancing, render targets, composer passes) is standard three.js, which
+  keeps a future migration mechanical rather than architectural.

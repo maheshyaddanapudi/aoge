@@ -9,9 +9,12 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 
-await page.goto('http://localhost:4174/aoge/', { waitUntil: 'networkidle' });
-await page.click('#start-normal');
-await page.waitForTimeout(1200);
+// ?lite: this suite exercises input logic, not rendering — software-GL
+// frames with the full post stack are too slow for Playwright's
+// click-stability checks at this viewport
+await page.goto('http://localhost:4174/aoge/?lite', { waitUntil: 'networkidle' });
+await page.click('#start-normal', { noWaitAfter: true });
+await page.waitForTimeout(2000);
 
 const screenOf = (sel) => page.evaluate((sel) => {
   const u = eval(sel);
