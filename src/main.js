@@ -1,7 +1,7 @@
 // Bootstrap: build the world, spawn starting bases, run the game loop.
 
 import * as THREE from 'three';
-import { TILE, PLAYER, ENEMY } from './config.js';
+import { TILE, PLAYER, MAP_SEED, NUM_ENEMIES, SIZE_NAME, BIOME_NAME } from './config.js';
 import { GameMap, generateResources, pickStartLocations } from './world/map.js';
 import { createScene } from './render/scene.js';
 import { buildTerrain, TreeRenderer } from './render/terrain.js';
@@ -16,6 +16,7 @@ import { HUD } from './ui/hud.js';
 import { Minimap } from './ui/minimap.js';
 import { initAudio, playSound, toggleMute } from './audio.js';
 import { loadPack, onPackReady } from './render/pack.js';
+import { saveGame, loadSaveMeta, restoreGame } from './game/save.js';
 import { loadUnitPack } from './render/unitPack.js';
 import { startMusic, combatPulse } from './music.js';
 import { voice } from './voice.js';
@@ -29,8 +30,9 @@ const LITE = new URLSearchParams(location.search).has('lite');
 if (LITE) renderer.shadowMap.enabled = false;
 
 // --- world ------------------------------------------------------------------
-const map = new GameMap();
-const starts = pickStartLocations(map);
+const params = new URLSearchParams(location.search);
+const map = new GameMap(MAP_SEED);
+const starts = pickStartLocations(map, 1 + NUM_ENEMIES);
 const resourceDescriptors = generateResources(map, starts, LITE);
 const { ground: terrainMesh, waterNormalTex } = buildTerrain(scene, map);
 const trees = new TreeRenderer(scene, 1000);
@@ -71,18 +73,35 @@ function spawnBase(owner, [gx, gy]) {
   return tc;
 }
 
-const playerTC = spawnBase(PLAYER, starts[0]);
-const enemyTC = spawnBase(ENEMY, starts[1]);
-game.recalcPop(PLAYER);
-game.recalcPop(ENEMY);
-
-const [aiGx, aiGy] = starts[1];
-game.ai = new AI(game, aiGx, aiGy);
-
-// --- fog of war ---------------------------------------------------------------
+// fog first so a save's exploration can be poured back in during restore
 const fog = new Fog(map);
 game.fog = fog;
-if (new URLSearchParams(location.search).has('nofog')) fog.revealAll();
+if (params.has('nofog')) fog.revealAll();
+
+// Fresh match: bases in the corners. Loaded match: rebuild from the save
+// (same seed regenerated the identical map + nodes).
+const RESTORE = params.has('load') ? loadSaveMeta() : null;
+let playerTC;
+if (RESTORE) {
+  restoreGame(game, RESTORE);
+  playerTC = game.buildings.find(b => b.owner === PLAYER && b.type === 'towncenter') ||
+             game.buildings.find(b => b.owner === PLAYER) ||
+             { cx: starts[0][0] * TILE, cz: starts[0][1] * TILE };
+} else {
+  playerTC = spawnBase(PLAYER, starts[0]);
+  for (let o = 1; o <= NUM_ENEMIES; o++) spawnBase(o, starts[o]);
+  for (let o = 0; o <= NUM_ENEMIES; o++) game.recalcPop(o);
+}
+
+// one AI per enemy player; anchor each at its (restored) town center
+for (let o = 1; o <= NUM_ENEMIES; o++) {
+  let [gx, gy] = starts[o];
+  const tc = game.buildings.find(b => b.owner === o && b.type === 'towncenter');
+  if (tc) { gx = tc.gx; gy = tc.gy; }
+  game.ais.push(new AI(game, gx, gy, 'normal', o));
+}
+game.ai = game.ais[0];
+
 fog.recompute(game); // reveal the home base before the first frame
 const fogRenderer = new FogRenderer(scene, map, fog);
 
@@ -216,11 +235,13 @@ function frame() {
 }
 frame();
 
-function startGame(difficulty) {
-  game.ai.setDifficulty(difficulty);
+let currentDifficulty = 'normal';
+function startGame(difficulty, resume = false) {
+  currentDifficulty = difficulty;
+  for (const ai of game.ais) ai.setDifficulty(difficulty);
   // Easy mode also gives the player a starting stockpile so a quick army is
-  // viable without a long economy build-up.
-  if (difficulty === 'easy') {
+  // viable without a long economy build-up. (Not again on resume.)
+  if (difficulty === 'easy' && !resume) {
     const r = game.players[PLAYER].res;
     r.wood += 900; r.food += 3500; r.gold += 1800; r.stone += 400;
   }
@@ -230,13 +251,63 @@ function startGame(difficulty) {
   running = true;
   clock.getDelta();
   const label = difficulty[0].toUpperCase() + difficulty.slice(1);
-  hud.alert(`${label} game — gather resources and build your empire. The enemy is preparing…`, true);
+  hud.alert(resume ? `Welcome back — ${label} game resumed.`
+                   : `${label} game — gather resources and build your empire. The enemy is preparing…`, true);
 }
 
 for (const diff of ['easy', 'normal', 'hard']) {
   const btn = document.getElementById('start-' + diff);
   if (btn) btn.addEventListener('click', () => startGame(diff));
 }
+
+// --- match setup / save-load UI ------------------------------------------------
+// Map options reload the page with URL params (the world is built at load).
+const optSize = document.getElementById('opt-size');
+const optBiome = document.getElementById('opt-biome');
+const optFoes = document.getElementById('opt-foes');
+if (optSize) {
+  optSize.value = SIZE_NAME; optBiome.value = BIOME_NAME; optFoes.value = String(NUM_ENEMIES);
+  const reloadWith = (newSeed) => {
+    const q = new URLSearchParams();
+    q.set('size', optSize.value); q.set('biome', optBiome.value); q.set('foes', optFoes.value);
+    q.set('seed', (newSeed ? (Math.random() * 1e9 | 0) : map.seed).toString(36));
+    if (params.has('lite')) q.set('lite', '');
+    location.search = q.toString();
+  };
+  for (const el of [optSize, optBiome, optFoes]) el.addEventListener('change', () => reloadWith(false));
+  document.getElementById('opt-newmap').addEventListener('click', () => reloadWith(true));
+}
+
+// Resume button (start screen) when a save exists; loading auto-offers it.
+const savedMeta = loadSaveMeta();
+const resumeBtn = document.getElementById('resume-btn');
+if (savedMeta && resumeBtn && !RESTORE) {
+  resumeBtn.classList.remove('hidden');
+  resumeBtn.textContent = `\u{1F4BE} Resume saved game (${savedMeta.difficulty}, ${Math.floor((savedMeta.time || 0) / 60)} min in)`;
+  resumeBtn.addEventListener('click', () => {
+    const q = new URLSearchParams();
+    q.set('load', '1');
+    q.set('seed', savedMeta.seed); q.set('size', savedMeta.size);
+    q.set('biome', savedMeta.biome); q.set('foes', savedMeta.foes);
+    if (params.has('lite')) q.set('lite', '');
+    location.search = q.toString();
+  });
+}
+if (RESTORE) {
+  // loaded world: single continue button (also provides the audio gesture)
+  for (const diff of ['easy', 'normal', 'hard']) document.getElementById('start-' + diff)?.classList.add('hidden');
+  document.getElementById('map-opts')?.classList.add('hidden');
+  resumeBtn.classList.remove('hidden');
+  resumeBtn.textContent = '▶ Continue saved game';
+  resumeBtn.addEventListener('click', () => startGame(RESTORE.difficulty || 'normal', true));
+}
+
+function doSave() {
+  if (!running || game.gameOver) { hud.alert('Nothing to save yet.'); return; }
+  saveGame(game, currentDifficulty);
+  hud.alert('Game saved — resume it from the start screen anytime.', true);
+}
+document.getElementById('save-btn').addEventListener('click', doSave);
 
 // Speed control buttons + keyboard ( [ slower, ] faster ).
 for (const b of document.querySelectorAll('.speed-btn')) {
@@ -257,6 +328,7 @@ window.__input = input;
 window.__audio = { voice, combatPulse };
 window.__minimap = minimap;
 window.__startGame = startGame;
+window.__save = doSave;
 // World -> screen projection (CSS pixels) for tooling/automation.
 window.__project = (wx, wy, wz) => {
   const v = new THREE.Vector3(wx, wy, wz).project(camera);

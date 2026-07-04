@@ -18,9 +18,9 @@ const DIFFICULTY = {
 };
 
 export class AI {
-  constructor(game, baseGx, baseGy, difficulty = 'normal') {
+  constructor(game, baseGx, baseGy, difficulty = 'normal', owner = ENEMY) {
     this.game = game;
-    this.me = ENEMY;
+    this.me = owner;
     this.baseGx = baseGx;
     this.baseGy = baseGy;
     const [bx, bz] = game.map.gridToWorld(baseGx, baseGy);

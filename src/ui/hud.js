@@ -1,6 +1,6 @@
 // DOM HUD: resource bar, alerts, selection panel, command card, game over.
 
-import { PLAYER, AGES, UNITS, BUILDINGS, BUILD_MENU, TECHS, MARKET, canAfford } from '../config.js';
+import { PLAYER, AGES, UNITS, BUILDINGS, BUILD_MENU, TECHS, MARKET, TEAM_NAMES, canAfford } from '../config.js';
 import { playSound } from '../audio.js';
 import { stopMusic } from '../music.js';
 
@@ -81,6 +81,38 @@ export class HUD {
     this.el.gameoverSub.textContent = won
       ? 'The enemy base lies in ruins. Your empire stands triumphant!'
       : 'Your base has been destroyed. The enemy empire prevails.';
+    this.renderScore();
+  }
+
+  // Score screen: per-player match statistics + weighted total.
+  renderScore() {
+    const host = document.getElementById('score-table');
+    if (!host) return;
+    const g = this.game;
+    const mins = Math.floor(g.time / 60), secs = Math.floor(g.time % 60);
+    const score = (s, p) => Math.round(
+      (s.wood + s.food + s.gold + s.stone) * 0.1 +
+      s.kills * 20 + s.razed * 50 + s.built * 15 + s.trained * 5 +
+      p.techs.length * 100 + (p.age - 1) * 200);
+    const rows = [
+      ['Resources gathered', s => (s.wood + s.food + s.gold + s.stone).toLocaleString()],
+      ['Units trained', s => s.trained],
+      ['Units lost', s => s.lost],
+      ['Enemy units killed', s => s.kills],
+      ['Buildings built', s => s.built],
+      ['Buildings lost', s => s.bLost],
+      ['Buildings destroyed', s => s.razed],
+      ['Techs / Age', (s, p) => `${p.techs.length} / ${AGES[p.age - 1].name.replace(' Age', '')}`],
+      ['SCORE', (s, p) => `<b>${score(s, p).toLocaleString()}</b>`],
+    ];
+    let html = `<div style="color:#9c8f6e;font-size:12px;margin:4px 0">Match time ${mins}:${String(secs).padStart(2, '0')}</div>`;
+    html += '<table class="score"><tr><th style="text-align:left"></th>' +
+      g.players.map((_, i) => `<th>${i === PLAYER ? 'You' : TEAM_NAMES[i]}</th>`).join('') + '</tr>';
+    for (const [label, fn] of rows) {
+      html += `<tr><td style="text-align:left">${label}</td>` +
+        g.players.map((p, i) => `<td>${fn(g.stats[i], p)}</td>`).join('') + '</tr>';
+    }
+    host.innerHTML = html + '</table>';
   }
 
   setSelection(sel) {

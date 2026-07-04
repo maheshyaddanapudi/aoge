@@ -474,7 +474,9 @@ export class Unit {
     }
     if (this.distTo(drop) < 1.7) {
       if (this.carry) {
-        this.game.players[this.owner].res[this.carry.res] += Math.round(this.carry.amt);
+        const amt = Math.round(this.carry.amt);
+        this.game.players[this.owner].res[this.carry.res] += amt;
+        this.game.stats[this.owner][this.carry.res] += amt;
         this.carry = null;
         this.updateCarryMesh();
       }

@@ -27,9 +27,9 @@
     .res .val { font-weight: bold; font-variant-numeric: tabular-nums; }
     #age-disp { margin-left: auto; font-weight: bold; color: #ffd970; letter-spacing: .5px;
       padding: 3px 14px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px; }
-    #mute-btn, #pause-btn, #idle-btn { margin-left: 8px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px;
+    #mute-btn, #pause-btn, #idle-btn, #save-btn { margin-left: 8px; background: rgba(0,0,0,.35); border: 1px solid #5a4520; border-radius: 4px;
       color: #f0e6d2; font-size: 15px; padding: 3px 10px; cursor: pointer; }
-    #mute-btn:hover, #pause-btn:hover, #idle-btn:hover { background: rgba(255,255,255,.1); }
+    #mute-btn:hover, #pause-btn:hover, #idle-btn:hover, #save-btn:hover { background: rgba(255,255,255,.1); }
     #idle-btn { font-size: 13px; }
     #idle-btn.none { opacity: .4; }
     #pause-btn.paused { background: #7a5c28; color: #ffe9b0; border-color: #b08c40; }
@@ -138,6 +138,11 @@
     .big-btn:hover { background: linear-gradient(#94703330, #6b4f1d), linear-gradient(#8a6a30, #634918); }
     #gameover-overlay h1.victory { color: #8fe080; }
     #gameover-overlay h1.defeat { color: #ff6b5e; }
+    #map-opts select { background: #2a2014; color: #ffe9b0; border: 1px solid #5a4520; border-radius: 4px; padding: 3px 6px; font-size: 13px; }
+    table.score { margin: 10px auto 4px; border-collapse: collapse; font-size: 13px; color: #e8dcc0; }
+    table.score th, table.score td { padding: 3px 14px; text-align: right; border-bottom: 1px solid #3a2d18; }
+    table.score th { color: #ffd970; }
+    table.score tr:last-child td { border-bottom: none; color: #ffd970; }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -159,6 +164,7 @@
       <button class="speed-btn" data-speed="4">4&times;</button>
     </div>
     <button id="pause-btn" title="Pause (P)">&#9208;</button>
+    <button id="save-btn" title="Save game">&#128190;</button>
     <button id="mute-btn" title="Toggle sound">&#128266;</button>
   </div>
 
@@ -192,6 +198,23 @@
         <br/><br/><b>Touch</b> &mdash; <kbd>tap</kbd> a unit to select, then <kbd>tap</kbd> a tree / enemy / ground to gather / attack / move &nbsp;&middot;&nbsp; <kbd>drag</kbd> to pan &nbsp;&middot;&nbsp; <kbd>pinch</kbd> to zoom &nbsp;&middot;&nbsp; <kbd>&#9783;</kbd> button to box-select
       </div>
       <p style="color:#cbbfa5;font-size:13.5px">Villagers gather &#129717; wood, &#127830; food and &#129689; gold and construct buildings.<br/>Houses raise your population cap. Each Age unlocks stronger units and buildings.</p>
+      <div id="map-opts" style="display:flex;gap:10px;justify-content:center;align-items:center;flex-wrap:wrap;margin-top:12px;font-size:13px;color:#cbbfa5">
+        <label>Map <select id="opt-size">
+          <option value="small">Small</option>
+          <option value="medium" selected>Medium</option>
+          <option value="large">Large</option>
+        </select></label>
+        <label>Biome <select id="opt-biome">
+          <option value="green" selected>Green</option>
+          <option value="arid">Arid</option>
+          <option value="lush">Lush</option>
+        </select></label>
+        <label>Enemies <select id="opt-foes">
+          <option value="1" selected>1 (Red)</option>
+          <option value="2">2 (Red + Purple)</option>
+        </select></label>
+        <button id="opt-newmap" class="big-btn" style="font-size:13px;padding:4px 12px" title="Generate a new map with these settings">&#127922; New map</button>
+      </div>
       <p style="color:#ffd970;font-weight:bold;margin-top:14px">Choose difficulty</p>
       <div style="display:flex;gap:12px;justify-content:center">
         <button class="big-btn" id="start-easy" style="margin-top:6px">Easy</button>
@@ -199,6 +222,7 @@
         <button class="big-btn" id="start-hard" style="margin-top:6px">Hard</button>
       </div>
       <p style="color:#9c8f6e;font-size:12px;margin-top:8px">Easy: the enemy plays defensively. Normal: balanced. Hard: aggressive early raids.</p>
+      <button class="big-btn hidden" id="resume-btn" style="margin-top:4px">&#128190; Resume saved game</button>
     </div>
   </div>
 
@@ -206,7 +230,8 @@
     <div class="overlay-box">
       <h1 id="gameover-title">Victory!</h1>
       <p id="gameover-sub"></p>
-      <button class="big-btn" onclick="location.reload()">Play Again</button>
+      <div id="score-table"></div>
+      <button class="big-btn" onclick="location.href=location.pathname">Play Again</button>
     </div>
   </div>
 

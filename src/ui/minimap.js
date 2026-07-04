@@ -132,10 +132,12 @@ export class Minimap {
     const k = S / WORLD;
     const fog = this.game.fog;
     // buildings as squares (enemy: only once explored)
+    const B_COLORS = ['#4d8df5', '#e8473a', '#b45de8'];
+    const U_COLORS = ['#7db8ff', '#ff7a6e', '#d79bff'];
     for (const b of this.game.buildings) {
       if (b.dead) continue;
       if (fog && b.owner !== PLAYER && !fog.exploredWorld(b.cx, b.cz)) continue;
-      ctx.fillStyle = b.owner === PLAYER ? '#4d8df5' : '#e8473a';
+      ctx.fillStyle = B_COLORS[b.owner] || B_COLORS[1];
       const s = Math.max(3, b.size * TILE * k);
       ctx.fillRect(b.cx * k - s / 2, b.cz * k - s / 2, s, s);
     }
@@ -143,7 +145,7 @@ export class Minimap {
     for (const u of this.game.units) {
       if (u.dead) continue;
       if (fog && u.owner !== PLAYER && !fog.visibleWorld(u.x, u.z)) continue;
-      ctx.fillStyle = u.owner === PLAYER ? '#7db8ff' : '#ff7a6e';
+      ctx.fillStyle = U_COLORS[u.owner] || U_COLORS[1];
       ctx.fillRect(u.x * k - 1.5, u.z * k - 1.5, 3, 3);
     }
 

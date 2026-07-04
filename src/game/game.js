@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   TILE, PLAYER, ENEMY, TEAM_COLORS, POP_MAX, AGES, BUILDINGS, UNITS,
-  RESOURCE_NODES, START_RESOURCES, AGE_HP_MULT, TECHS, MARKET,
+  RESOURCE_NODES, START_RESOURCES, AGE_HP_MULT, TECHS, MARKET, NUM_ENEMIES,
   canAfford, payCost, refundCost,
 } from '../config.js';
 import { Unit } from './unit.js';
@@ -19,12 +19,13 @@ export class Game {
     this.map = map;
     this.trees = treeRenderer;
     this.effects = null;   // set by main after construction
-    this.ai = null;
+    this.ai = null;        // first enemy AI (kept for tooling/back-compat)
+    this.ais = [];         // all enemy AIs (1v1 or 1v2)
     this.fog = null;       // set by main; player-view visibility grid
     this.time = 0;
     this.gameOver = false;
 
-    this.players = [PLAYER, ENEMY].map(id => ({
+    this.players = Array.from({ length: 1 + NUM_ENEMIES }, (_, id) => ({
       id,
       res: { ...START_RESOURCES },
       age: 1,
@@ -33,6 +34,12 @@ export class Game {
       ageResearchInProgress: false,
       techs: [], // researched blacksmith tech ids
       mods: { atkMult: 1, hpMult: 1, gatherMult: 1, bldHpMult: 1 },
+    }));
+
+    // per-player match statistics for the score screen
+    this.stats = this.players.map(() => ({
+      wood: 0, food: 0, gold: 0, stone: 0,
+      trained: 0, lost: 0, kills: 0, built: 0, bLost: 0, razed: 0,
     }));
 
     this.units = [];
@@ -53,6 +60,9 @@ export class Game {
 
   teamColor(owner) { return TEAM_COLORS[owner]; }
   sound(name) { this.soundFn(name); }
+
+  // Hostility: the player fights every AI; the AIs are allied with each other.
+  hostile(a, b) { return a !== b && ((a === PLAYER) !== (b === PLAYER)); }
 
   // ---- setup ------------------------------------------------------------------
 
@@ -102,6 +112,7 @@ export class Game {
   spawnFromBuilding(building, unitType) {
     const [x, z] = building.spawnPoint();
     const u = this.spawnUnit(unitType, building.owner, x, z);
+    this.stats[building.owner].trained++;
     const r = building.rally;
     if (r) {
       if (r.node && !r.node.dead && r.node.amount > 0 && unitType === 'villager') u.orderGather(r.node);
@@ -149,6 +160,7 @@ export class Game {
 
   onBuildingComplete(b, silent = false) {
     this.recalcPop(b.owner);
+    if (!silent) this.stats[b.owner].built++;
     if (!silent && b.owner === PLAYER) {
       this.sound('built');
     }
@@ -256,7 +268,8 @@ export class Game {
       this.lastPingT = this.time;
       this.onPing?.(target.isBuilding ? target.cx : target.x, target.isBuilding ? target.cz : target.z);
     }
-    if (target.isUnit && attacker && !attacker.dead) {
+    if (target.isUnit && attacker && !attacker.dead &&
+        this.hostile(target.owner, attacker.owner)) {
       const passive = target.state === 'idle' || target.state === 'gathering' ||
                       target.state === 'toResource' || target.state === 'deposit' ||
                       target.state === 'move' || target.state === 'building' ||
@@ -274,11 +287,20 @@ export class Game {
         }
       }
     }
-    if (this.ai) this.ai.onDamage(target, attacker);
+    for (const ai of this.ais) ai.onDamage(target, attacker);
 
     if (target.hp <= 0) {
-      if (target.isUnit) this.killUnit(target);
-      else this.razeBuilding(target);
+      // score bookkeeping before the entity is torn down
+      const st = this.stats;
+      if (target.isUnit) {
+        st[target.owner].lost++;
+        if (attacker && this.hostile(target.owner, attacker.owner)) st[attacker.owner].kills++;
+        this.killUnit(target);
+      } else {
+        st[target.owner].bLost++;
+        if (attacker && this.hostile(target.owner, attacker.owner)) st[attacker.owner].razed++;
+        this.razeBuilding(target);
+      }
     }
   }
 
@@ -360,7 +382,7 @@ export class Game {
     this.effects.spawnRubble(b.cx, b.groundY, b.cz, b.size);
     this.sound('collapse');
     if (!silent && b.owner === PLAYER) this.onAlert(`Your ${b.def.name} has been destroyed!`);
-    if (this.ai) this.ai.onBuildingLost(b);
+    for (const ai of this.ais) if (ai.me === b.owner) ai.onBuildingLost(b);
     this.checkWinLose();
   }
 
@@ -483,13 +505,13 @@ export class Game {
   nearestEnemy(owner, x, z, r, includeBuildings = false) {
     let best = null, bestD = Infinity;
     for (const u of this.units) {
-      if (u.owner === owner || u.dead || u.garrisoned) continue;
+      if (!this.hostile(owner, u.owner) || u.dead || u.garrisoned) continue;
       const d = Math.hypot(u.x - x, u.z - z);
       if (d <= r && d < bestD) { bestD = d; best = u; }
     }
     if (includeBuildings) {
       for (const b of this.buildings) {
-        if (b.owner === owner || b.dead) continue;
+        if (!this.hostile(owner, b.owner) || b.dead) continue;
         const half = (b.size * TILE) / 2;
         const dx = Math.max(Math.abs(x - b.cx) - half, 0);
         const dz = Math.max(Math.abs(z - b.cz) - half, 0);
@@ -555,7 +577,7 @@ export class Game {
     const bs = this._bScratch || (this._bScratch = []);
     bs.length = 0; for (const b of this.buildings) bs.push(b);
     for (const b of bs) if (!b.dead) b.update(dt);
-    if (this.ai) this.ai.update(dt);
+    for (const ai of this.ais) ai.update(dt);
     this.fog?.update(this, dt);
     this.effects.update(dt);
   }
@@ -570,7 +592,8 @@ export class Game {
 
   checkWinLose() {
     if (this.gameOver || this.time < 5) return;
-    if (this.sideDefeated(ENEMY)) {
+    const allEnemiesDown = this.players.every((p, id) => id === PLAYER || this.sideDefeated(id));
+    if (allEnemiesDown) {
       this.gameOver = true;
       this.fog?.revealAll();
       this.onGameOver(true);

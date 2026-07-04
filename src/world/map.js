@@ -1,7 +1,7 @@
 // Procedural map: rolling terrain heights, water, forests, berries, gold mines,
 // and the walkability/occupancy grid used by pathfinding and building placement.
 
-import { MAP_SIZE, TILE } from '../config.js';
+import { MAP_SIZE, TILE, BIOME } from '../config.js';
 
 // --- Deterministic-ish value noise -----------------------------------------
 function makeNoise(seed) {
@@ -66,7 +66,7 @@ export class GameMap {
   }
 
   moistureAt(wx, wz) {
-    return this.moistNoise(wx / 34 + 3, wz / 34 + 9);
+    return Math.max(0, Math.min(1, this.moistNoise(wx / 34 + 3, wz / 34 + 9) + BIOME.moist));
   }
 
   tileHeight(gx, gy) {
@@ -176,7 +176,7 @@ export function generateResources(map, starts, lite = false) {
 
   // Forest blobs scattered around the map. (Fewer in lite mode — foliage is
   // the heaviest render cost on software GPUs.)
-  const forestCount = lite ? 7 : 26;
+  const forestCount = Math.round((lite ? 7 : 26) * BIOME.forestMul * (size / 96));
   for (let f = 0; f < forestCount; f++) {
     const cx = 6 + rand() * (size - 12), cy = 6 + rand() * (size - 12);
     if (!clearOf(cx, cy, 11)) continue;
@@ -248,10 +248,14 @@ export function generateResources(map, starts, lite = false) {
   return out;
 }
 
-// Pick two start locations in opposite map quadrants on flat, walkable ground.
-export function pickStartLocations(map) {
+// Pick start locations in map corners on flat, walkable ground. Two players
+// take opposite corners; a third (second enemy) takes an adjacent corner.
+export function pickStartLocations(map, n = 2) {
   const size = map.size;
-  const candidates = [
+  const candidates = n >= 3 ? [
+    [[18, 18], [size - 22, size - 22], [size - 22, 18]],
+    [[18, 18], [size - 22, size - 22], [18, size - 22]],
+  ] : [
     [[18, 18], [size - 22, size - 22]],
     [[size - 22, 18], [18, size - 22]],
   ];
@@ -263,9 +267,9 @@ export function pickStartLocations(map) {
     return bad;
   };
   let best = candidates[0], bestScore = Infinity;
-  for (const pair of candidates) {
-    const sc = flatness(pair[0]) + flatness(pair[1]);
-    if (sc < bestScore) { bestScore = sc; best = pair; }
+  for (const set of candidates) {
+    const sc = set.reduce((s, loc) => s + flatness(loc), 0);
+    if (sc < bestScore) { bestScore = sc; best = set; }
   }
   // Nudge each start to fully walkable ground if needed.
   return best.map(([gx, gy]) => {

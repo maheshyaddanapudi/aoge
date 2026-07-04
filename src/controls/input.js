@@ -178,7 +178,7 @@ export class InputController {
 
     if (selUnits.length) {
       // enemy (picked or nearby) -> attack
-      const enemy = (ent && ent.owner !== PLAYER) ? ent : this.unitNearScreen(x, y, 34, 1 - PLAYER);
+      const enemy = (ent && ent.owner !== PLAYER) ? ent : this.unitNearScreen(x, y, 34, 'foe');
       if (enemy) return this.dispatchContext({ entity: enemy });
       // resource node -> gather
       if (hit.node) return this.dispatchContext(hit);
@@ -503,7 +503,8 @@ export class InputController {
     let best = null, bestD = maxPx * maxPx;
     for (const u of this.game.units) {
       if (u.dead || !u.group.visible) continue;
-      if (ownerFilter !== null && u.owner !== ownerFilter) continue;
+      if (ownerFilter === 'foe' ? u.owner === PLAYER
+          : (ownerFilter !== null && u.owner !== ownerFilter)) continue;
       v.set(u.x, u.group.position.y + 0.9, u.z).project(this.camera);
       if (v.z >= 1) continue;
       const sx = (v.x + 1) / 2 * window.innerWidth;
@@ -557,7 +558,7 @@ export class InputController {
     // forgiveness: right-clicking near an ENEMY unit targets it — never snap
     // to own units, which would silently turn formation moves into follows
     if (!hit.entity && !hit.node) {
-      const nearFoe = this.unitNearScreen(cx, cy, 22, 1 - PLAYER);
+      const nearFoe = this.unitNearScreen(cx, cy, 22, 'foe');
       if (nearFoe) hit = { entity: nearFoe };
     }
     this.dispatchContext(hit, shift);

@@ -1,8 +1,24 @@
 // Central game data: ages, units, buildings, economy tuning.
 
 export const TILE = 2;            // world units per grid tile
-export const MAP_SIZE = 96;       // tiles per side
+
+// Match setup comes from URL params so the start screen can offer map
+// variety with a simple reload (?seed=&size=&biome=&foes=).
+const q = typeof location !== 'undefined' ? new URLSearchParams(location.search) : new URLSearchParams();
+export const MAP_SIZES = { small: 72, medium: 96, large: 128 };
+export const SIZE_NAME = MAP_SIZES[q.get('size')] ? q.get('size') : 'medium';
+export const MAP_SIZE = MAP_SIZES[SIZE_NAME];  // tiles per side
 export const WORLD = MAP_SIZE * TILE;
+export const MAP_SEED = /^[0-9a-z]+$/.test(q.get('seed') || '')
+  ? (parseInt(q.get('seed'), 36) >>> 0) : ((Math.random() * 1e9) | 0);
+export const BIOMES = {
+  green: { name: 'Green',  moist: 0,     forestMul: 1 },
+  arid:  { name: 'Arid',   moist: -0.34, forestMul: 0.55 },
+  lush:  { name: 'Lush',   moist: 0.28,  forestMul: 1.5 },
+};
+export const BIOME_NAME = BIOMES[q.get('biome')] ? q.get('biome') : 'green';
+export const BIOME = BIOMES[BIOME_NAME];
+export const NUM_ENEMIES = q.get('foes') === '2' ? 2 : 1;
 
 export const CARRY_CAPACITY = 10;
 export const POP_MAX = 120;
@@ -10,8 +26,8 @@ export const POP_MAX = 120;
 export const PLAYER = 0;
 export const ENEMY = 1;
 
-export const TEAM_COLORS = [0x2f6fe0, 0xd23b2e];
-export const TEAM_NAMES = ['Blue', 'Red'];
+export const TEAM_COLORS = [0x2f6fe0, 0xd23b2e, 0x9b30d9];
+export const TEAM_NAMES = ['Blue', 'Red', 'Purple'];
 
 export const AGES = [
   { name: 'Dark Age',     cost: null },
