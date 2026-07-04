@@ -27,8 +27,24 @@ real-time shadows, post-processing and procedural surface textures.
   stronger units and buildings: Militia → Archers → Knights → Catapults, plus
   watch towers, palisade walls and siege workshops.
 - A scripted enemy AI builds its own base on the same map, advances through the
-  ages, and attacks in escalating waves.
+  ages, researches blacksmith techs and attacks in escalating waves — optionally
+  two allied AIs at once (1v2).
 - **Win** by destroying every enemy building. **Lose** if yours are razed first.
+- **Fog of war**, unit stances, attack-move, drag-line walls, control groups.
+- **Blacksmith tech tree**, spearman/knight/archer counter triangle, market
+  trading, stone mining, town bell and garrisoning, repairs.
+- **Docks & fishing boats** (naval-lite) on maps with ponds.
+- **Scenarios**: Lightning War, Hold the Line, Golden Age — plus map seed,
+  size and biome options on the start screen.
+- **Save/load** (localStorage), **score screen**, and **replays**: the sim is
+  fully deterministic (fixed 50 ms ticks + seeded PRNG), every player action
+  is a serializable command, and a match's tick-stamped command log replays
+  into an identical playout.
+- **Local co-op multiplayer**: host a game and open the join link in a second
+  tab/window — a BroadcastChannel lockstep session shares one deterministic
+  sim (guest commands route through the host; state hashes verify sync).
+  Online play would swap the transport for a WebRTC DataChannel (e.g. PeerJS)
+  behind the same `Coop` protocol in `src/game/net.js`.
 - Fully synthesized audio: generative medieval background music (Karplus-Strong
   plucked strings, flute, drone) that layers in war drums during combat, plus
   AoE-style gibberish voice lines when you select and command units — no audio

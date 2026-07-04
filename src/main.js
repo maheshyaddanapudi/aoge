@@ -18,6 +18,7 @@ import { initAudio, playSound, toggleMute } from './audio.js';
 import { loadPack, onPackReady } from './render/pack.js';
 import { saveGame, loadSaveMeta, restoreGame } from './game/save.js';
 import { execCommand } from './game/commands.js';
+import { Coop } from './game/net.js';
 import { Ambient } from './render/ambient.js';
 import { loadUnitPack } from './render/unitPack.js';
 import { startMusic, combatPulse } from './music.js';
@@ -109,6 +110,13 @@ for (let o = 1; o <= NUM_ENEMIES; o++) {
   game.ais.push(new AI(game, gx, gy, 'normal', o));
 }
 game.ai = game.ais[0];
+
+// --- local lockstep co-op (?mp=host|join&room=) --------------------------------
+const MP = params.get('mp');
+const ROOM = params.get('room');
+const coop = (MP === 'host' || MP === 'join') && ROOM
+  ? new Coop(game, MP === 'host' ? 'host' : 'guest', ROOM)
+  : null;
 
 if (REPLAY) {
   // spectator: see everything, steer nothing; commands come from the log
@@ -251,10 +259,14 @@ function frame() {
   requestAnimationFrame(frame);
   const dt = Math.min(clock.getDelta(), 0.05);
   if (running && !paused) {
-    acc += dt * gameSpeed;
-    let steps = 0;
-    while (acc >= TICK && steps++ < 16) { game.update(TICK); acc -= TICK; }
-    if (acc > TICK * 16) acc = 0; // huge stall: drop time instead of spiraling
+    if (coop?.role === 'guest') {
+      coop.followTicks(); // the host owns the clock; we replay its ticks
+    } else {
+      acc += dt * gameSpeed;
+      let steps = 0;
+      while (acc >= TICK && steps++ < 16) { game.update(TICK); acc -= TICK; }
+      if (acc > TICK * 16) acc = 0; // huge stall: drop time instead of spiraling
+    }
   }
   rtsCam.update(dt);
   updateSun(rtsCam.smoothTarget, rtsCam.smoothDist);
@@ -292,8 +304,10 @@ function startGame(difficulty, resume = false) {
   currentDifficulty = difficulty;
   for (const ai of game.ais) ai.setDifficulty(difficulty);
   // record the command log for the replay system (fresh matches only —
-  // a resumed save has no world-genesis to replay from)
-  if (!resume && !REPLAY) game.cmdLog = [];
+  // a resumed save has no world-genesis to replay from; co-op guests get
+  // their commands via the network, so only the host records)
+  if (!resume && !REPLAY && coop?.role !== 'guest') game.cmdLog = [];
+  if (coop?.role === 'host') coop.hostStart(difficulty);
   // Easy mode also gives the player a starting stockpile so a quick army is
   // viable without a long economy build-up. (Not again on resume.)
   if (difficulty === 'easy' && !resume) {
@@ -368,6 +382,43 @@ if (REPLAY) {
   resumeBtn.classList.remove('hidden');
   resumeBtn.textContent = '▶ Watch replay';
   resumeBtn.addEventListener('click', () => startGame(REPLAY.difficulty || 'normal', false));
+}
+
+// Co-op UI: host shows a copyable join link; guest waits for the host start.
+const coopBtn = document.getElementById('coop-btn');
+const coopInfo = document.getElementById('coop-info');
+if (coop?.role === 'guest') {
+  for (const diff of ['easy', 'normal', 'hard']) document.getElementById('start-' + diff)?.classList.add('hidden');
+  document.getElementById('map-opts')?.classList.add('hidden');
+  coopBtn?.classList.add('hidden');
+  if (coopInfo) {
+    coopInfo.classList.remove('hidden');
+    coopInfo.textContent = '👥 Co-op: waiting for the host to start the game…';
+  }
+  coop.onStart = (difficulty) => startGame(difficulty, false);
+} else if (coop?.role === 'host') {
+  if (coopBtn) coopBtn.classList.add('hidden');
+  if (coopInfo) {
+    const q = new URLSearchParams(location.search);
+    q.set('mp', 'join');
+    const link = location.origin + location.pathname + '?' + q.toString();
+    coopInfo.classList.remove('hidden');
+    coopInfo.innerHTML = `👥 Hosting co-op — open this link in another tab/window:<br><input readonly value="${link}" style="width:96%;margin-top:4px;background:#1a1409;color:#ffe9b0;border:1px solid #5a4520;border-radius:4px;padding:4px 6px;font-size:12px" onclick="this.select()">`;
+  }
+} else if (coopBtn) {
+  coopBtn.addEventListener('click', () => {
+    const q = new URLSearchParams(location.search);
+    q.set('mp', 'host');
+    q.set('room', Math.random().toString(36).slice(2, 8));
+    q.set('seed', map.seed.toString(36));
+    q.set('size', SIZE_NAME); q.set('biome', BIOME_NAME); q.set('foes', String(NUM_ENEMIES));
+    if (SCENARIO_NAME) q.set('scenario', SCENARIO_NAME);
+    location.search = q.toString();
+  });
+}
+if (coop) {
+  coop.onDesync = () => hud.alert('Co-op sims diverged — please restart the session.');
+  window.__coop = coop;
 }
 
 // After a match, persist its command log so it can be re-watched; the
