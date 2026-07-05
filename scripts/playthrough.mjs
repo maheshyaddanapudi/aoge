@@ -66,6 +66,13 @@ const enemyTarget = () => page.evaluate(() => {
   const tc = list.find(b => b.type === 'towncenter') || list[0];
   return tc ? { cx: tc.cx, cz: tc.cz, n: list.length } : null;
 });
+// mop-up: with the base razed, the win needs the last enemy villagers hunted
+const enemyRemnant = () => page.evaluate(() => {
+  const us = window.__game.units.filter(u => u.owner !== 0 && !u.dead);
+  if (!us.length) return null;
+  return { cx: us.reduce((s, u) => s + u.x, 0) / us.length,
+           cz: us.reduce((s, u) => s + u.z, 0) / us.length, n: us.length };
+});
 
 // positions of my villagers / militia for box-select
 const unitScreens = (type) => page.evaluate((type) => {
@@ -267,6 +274,33 @@ async function rightClickGround(wx, wz, wy = 1) {
   return false;
 }
 
+// Attack-move at a world point: press A, then left-click — the human way to
+// assault a base still under fog of war (a right-click on a fog-hidden
+// building would just be a move order).
+async function attackMoveAt(wx, wz) {
+  for (const d of [78, 70, 90, 62, 104, 55]) {
+    await frame(wx, wz, d);
+    await sleep(750);
+    const s = await proj(wx, 1, wz);
+    if (s.z < 1 && s.x > 16 && s.x < VW - 16 && s.y > 16 && s.y < HUD_TOP - 6) {
+      await page.keyboard.press('a');
+      await sleep(120);
+      const dbg = await page.evaluate(() => ({
+        armed: window.__input.attackMoveArmed === true,
+        sel: window.__input.selection.length,
+        selMil: window.__input.selectedUnits().filter(u => u.type !== 'villager').length,
+        overlay: !!document.querySelector('.overlay:not(.hidden)'),
+      }));
+      log(`  [dbg] pre-click ${JSON.stringify(dbg)}`);
+      await page.mouse.move(s.x, s.y);
+      await page.mouse.click(s.x, s.y);
+      await sleep(200);
+      return true;
+    }
+  }
+  return false;
+}
+
 // Staging point just in front of the player base: militia rally here and mass
 // safely (trickling one-at-a-time into the enemy base just gets them killed).
 const e0 = await enemyTarget();
@@ -277,7 +311,7 @@ const stage = { x: tc.cx + (_dx / _L) * 9, z: tc.cz + (_dz / _L) * 9 };
 let rallySet = false;
 let assaults = 0;
 const T0 = performance.now();
-const MAX_MS = 9 * 60 * 1000;
+const MAX_MS = 16 * 60 * 1000;
 
 while (true) {
   const st = await state();
@@ -307,20 +341,26 @@ while (true) {
   // -- mass then strike: once a wave is gathered at staging, box-select it
   //    (reliable at the base) and send the whole army at the enemy town centre.
   //    A combined wave + reinforcements overwhelm the base's defenders. --
-  const need = assaults === 0 ? 14 : 9;
+  const need = assaults === 0 ? 10 : 8;
   if (st.militia >= need) {
     assaults++;
     log(`assault #${assaults} with ~${st.militia} militia`);
     await frame(tc.cx, tc.cz + 4, 34);
     await sleep(750);
-    await boxSelect(await unitScreens('militia'), 40);
-    const e = await enemyTarget();
+    // M = select whole army (the human hotkey) — box-select drags can clamp
+    // into HUD chrome and silently grab the wrong thing
+    await page.keyboard.press('m');
+    await sleep(150);
+    let e = await enemyTarget();
+    if (!e) {
+      e = await enemyRemnant();
+      if (e) log(`  mop-up: ${e.n} enemy survivors`);
+    }
     if (e) {
-      // rightClickGround zooms onto the enemy and right-clicks the TC body
-      // (wy=3) -> attack order; the army stays selected across the camera move
-      const sent = await rightClickGround(e.cx, e.cz, 3);
-      const eng = await page.evaluate(() => window.__game.units.filter(u => u.owner === 0 && (u.state === 'toAttack' || u.state === 'fighting' || u.order?.kind === 'attack')).length);
-      log(`  attack sent=${sent} engaging=${eng}`);
+      // attack-move into the (fogged) enemy base: engage everything en route
+      const sent = await attackMoveAt(e.cx, e.cz);
+      const eng = await page.evaluate(() => window.__game.units.filter(u => u.owner === 0 && (u.state === 'toAttack' || u.state === 'fighting' || u.order?.kind === 'attackmove' || u.order?.kind === 'attack')).length);
+      log(`  attack-move sent=${sent} engaging=${eng}`);
       await sleep(2200);
     }
   } else if (rallySet) {
