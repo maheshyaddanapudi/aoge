@@ -160,7 +160,10 @@ export class Game {
     this.stats[building.owner].trained++;
     const r = building.rally;
     if (r) {
-      if (r.node && !r.node.dead && r.node.amount > 0 && unitType === 'villager') u.orderGather(r.node);
+      const canGatherIt = r.node && (unitType === 'villager'
+        ? r.node.type !== 'fish'
+        : UNITS[unitType].gathers?.includes(r.node.type)); // boats fish their rally
+      if (r.node && !r.node.dead && r.node.amount > 0 && canGatherIt) u.orderGather(r.node);
       else if (r.farm && !r.farm.dead && unitType === 'villager') u.orderGatherFarm(r.farm);
       else if ((r.node || r.farm) && unitType !== 'villager') {
         // military rallied onto a resource/farm just attack-moves there
@@ -494,6 +497,7 @@ export class Game {
     let best = null, bestD = Infinity;
     for (const n of this.nodes) {
       if (n.dead || n.res !== res || n.amount <= 0) continue;
+      if (n.type === 'fish') continue; // boats only — villagers can't gather it
       const d = Math.hypot(n.wx - x, n.wz - z);
       if (d < bestD && d <= maxR) { bestD = d; best = n; }
     }
@@ -518,6 +522,7 @@ export class Game {
     let best = null, bestD = Infinity;
     for (const n of this.nodes) {
       if (n.dead || n === exclude || n.res !== res || n.amount <= 0) continue;
+      if (n.type === 'fish') continue; // land gatherers only
       const d = Math.hypot(n.wx - x, n.wz - z);
       if (d <= maxR && d < bestD && this.nodeReachable(n)) { bestD = d; best = n; }
     }

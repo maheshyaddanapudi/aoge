@@ -7,7 +7,7 @@ const errors = [];
 page.on('pageerror', e => errors.push('pageerror: ' + e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 await page.goto('http://localhost:4193/aoge/', { waitUntil: 'networkidle' });
-await page.click('#start-normal');
+await page.evaluate(()=>document.getElementById('start-normal').click());
 await page.waitForTimeout(3500);
 await page.evaluate(() => {
   const g = window.__game;

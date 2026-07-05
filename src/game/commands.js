@@ -60,7 +60,10 @@ export function execCommand(game, cmd) {
       const n = nOf(game, cmd.n);
       if (!n) return false;
       for (const u of unitsOf(game, cmd.ids)) {
-        if (u.type === 'villager') issue(u, cmd.shift, () => u.orderGather(n));
+        // villagers gather land nodes; boats gather their whitelist (fish)
+        const canGather = u.type === 'villager' ? n.type !== 'fish'
+          : !!u.def.gathers?.includes(n.type);
+        if (canGather) issue(u, cmd.shift, () => u.orderGather(n));
         else issue(u, cmd.shift, () => u.orderMove(n.wx, n.wz));
       }
       return true;
